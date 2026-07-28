@@ -42,6 +42,7 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
     ctx: PipelineContext
     config: AssignCadetDatabasesConfig
     processed_tags: Dict[str, TagAssociationClass]
+    em_hotfix_database_name = "data_insights"
 
     def __init__(self, config: AssignCadetDatabasesConfig, ctx: PipelineContext):
         super().__init__()
@@ -115,8 +116,8 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
         print("Assigning datasets to databases")
         for dataset_urn in self.entity_map.keys():
             mapping = self.mappings.get(dataset_urn)
+            parsed = self._parse_dataset_urn_for_database_table(dataset_urn)
             if not mapping:
-                parsed = self._parse_dataset_urn_for_database_table(dataset_urn)
                 if parsed:
                     mapping = self.db_table_mappings.get(parsed)
                     if mapping:
@@ -128,8 +129,20 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                         )
 
             container_urn = mapping.get("database") if mapping else None
+            if (
+                not container_urn
+                and parsed
+                and parsed[0] == self.em_hotfix_database_name
+                and "cadet_electronic_monitoring.awsdatacatalog." in dataset_urn
+            ):
+                container_urn = self._make_database_container_urn(parsed[0])
+                logging.info(
+                    "Applied EM data_insights hotfix mapping for dataset_urn=%s -> container_urn=%s",
+                    dataset_urn,
+                    container_urn,
+                )
+
             if not container_urn:
-                parsed = self._parse_dataset_urn_for_database_table(dataset_urn)
                 logging.warning(
                     "No container mapping for dataset_urn=%s parsed_database_table=%s",
                     dataset_urn,
@@ -196,3 +209,13 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
             return None
 
         return parts[-2], parts[-1]
+
+    def _make_database_container_urn(self, database: str) -> str:
+        database_key = mcp_builder.DatabaseKey(
+            database=database,
+            platform=PLATFORM,
+            instance=INSTANCE,
+            env=ENV,
+            backcompat_env_as_instance=True,
+        )
+        return database_key.as_urn()
