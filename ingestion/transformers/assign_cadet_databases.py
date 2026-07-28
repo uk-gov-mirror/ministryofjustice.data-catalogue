@@ -1,4 +1,5 @@
 import logging
+import re
 from abc import ABCMeta
 from typing import Dict, List, Optional, Union, cast
 
@@ -17,7 +18,7 @@ from datahub.metadata.schema_classes import (
 )
 from datahub.utilities.urns.tag_urn import TagUrn
 
-from ingestion.config import ENV, INSTANCE, PLATFORM
+from ingestion.config import ENV, INSTANCE, PLATFORM, get_instance_variants
 from ingestion.ingestion_utils import (
     domains_to_subject_areas,
     get_cadet_metadata_json,
@@ -49,6 +50,20 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
         self.processed_tags = {}
         manifest = get_cadet_metadata_json(self.config.manifest_s3_uri)
         self.mappings = self._get_table_database_mappings(manifest)
+
+        sample_mappings = list(self.mappings.items())[:5]
+        logging.info(
+            "AssignCadetDatabases initialized with %d table->database mappings (instance=%s; variants=%s)",
+            len(self.mappings),
+            INSTANCE,
+            sorted(get_instance_variants(INSTANCE)),
+        )
+        for dataset_urn, mapping in sample_mappings:
+            logging.info(
+                "Sample mapping: %s -> %s",
+                dataset_urn,
+                mapping.get("database"),
+            )
 
     @classmethod
     def create(cls, config_dict: dict, ctx: PipelineContext) -> "AssignCadetDatabases":
@@ -104,13 +119,25 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
             )
 
         print("Assigning datasets to databases")
+        assigned_count = 0
+        missing_count = 0
         for dataset_urn in self.entity_map.keys():
             container_urn = self.mappings.get(dataset_urn, {}).get("database")
             if not container_urn:
+                missing_count += 1
+                alternate_urn = self._toggle_instance_suffix_in_dataset_urn(dataset_urn)
+                alternate_match = bool(alternate_urn and alternate_urn in self.mappings)
                 logging.warning(f"No container mapping for {dataset_urn=}")
+                if alternate_urn:
+                    logging.warning(
+                        "Tried alternate instance URN %s (present_in_mapping=%s)",
+                        alternate_urn,
+                        alternate_match,
+                    )
                 continue
 
             print(f"Assigning {dataset_urn=} to {container_urn=}")
+            assigned_count += 1
             mcps.append(
                 MetadataChangeProposalWrapper(
                     entityUrn=f"{dataset_urn}",
@@ -118,24 +145,43 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                 )
             )
 
+        logging.info(
+            "AssignCadetDatabases summary: datasets_seen=%d assigned=%d missing=%d",
+            len(self.entity_map),
+            assigned_count,
+            missing_count,
+        )
+
         return mcps
+
+    def _toggle_instance_suffix_in_dataset_urn(self, dataset_urn: str) -> Optional[str]:
+        """Swap between instance forms with and without `.awsdatacatalog` suffix."""
+        match = re.match(
+            r"^(urn:li:dataset:\(urn:li:dataPlatform:dbt,)([^.]+)(\..+,PROD\))$",
+            dataset_urn,
+        )
+        if not match:
+            return None
+
+        prefix, instance_part, suffix = match.groups()
+        suffix_to_toggle = ".awsdatacatalog"
+        if instance_part.endswith(suffix_to_toggle):
+            alternate_instance = instance_part.removesuffix(suffix_to_toggle)
+        else:
+            alternate_instance = f"{instance_part}{suffix_to_toggle}"
+
+        return f"{prefix}{alternate_instance}{suffix}"
 
     @report_time
     def _get_table_database_mappings(self, manifest) -> Dict[str, Dict[str, str]]:
         mappings = {}
+        instance_variants = get_instance_variants(INSTANCE)
         for node in manifest["nodes"]:
             if manifest["nodes"][node]["resource_type"] in ["model", "seed"]:
                 fqn = manifest["nodes"][node]["fqn"]
                 if validate_fqn(fqn):
                     database, table_name = parse_database_and_table_names(
                         manifest["nodes"][node]
-                    )
-
-                    dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
-                        name=f"{database}.{table_name}",
-                        platform=PLATFORM,
-                        platform_instance=INSTANCE,
-                        env=ENV,
                     )
                     database_key = mcp_builder.DatabaseKey(
                         database=database,
@@ -146,6 +192,16 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                     )
                     database_urn = database_key.as_urn()
 
-                    mappings[dataset_urn] = {"database": database_urn, "domain": fqn[1]}
+                    for instance_variant in instance_variants:
+                        dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
+                            name=f"{database}.{table_name}",
+                            platform=PLATFORM,
+                            platform_instance=instance_variant,
+                            env=ENV,
+                        )
+                        mappings[dataset_urn] = {
+                            "database": database_urn,
+                            "domain": fqn[1],
+                        }
 
         return mappings
