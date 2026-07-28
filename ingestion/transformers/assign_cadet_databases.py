@@ -1,6 +1,7 @@
 import logging
+import re
 from abc import ABCMeta
-from typing import Dict, List, Optional, Union, cast
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 import datahub.emitter.mce_builder as mce_builder
 import datahub.emitter.mcp_builder as mcp_builder
@@ -48,7 +49,15 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
         self.config = config
         self.processed_tags = {}
         manifest = get_cadet_metadata_json(self.config.manifest_s3_uri)
-        self.mappings = self._get_table_database_mappings(manifest)
+        self.mappings, self.db_table_mappings = self._get_table_database_mappings(
+            manifest
+        )
+        logging.info(
+            "AssignCadetDatabases prepared mappings: urn_keys=%d db_table_keys=%d instance=%s",
+            len(self.mappings),
+            len(self.db_table_mappings),
+            INSTANCE,
+        )
 
     @classmethod
     def create(cls, config_dict: dict, ctx: PipelineContext) -> "AssignCadetDatabases":
@@ -105,9 +114,27 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
 
         print("Assigning datasets to databases")
         for dataset_urn in self.entity_map.keys():
-            container_urn = self.mappings.get(dataset_urn, {}).get("database")
+            mapping = self.mappings.get(dataset_urn)
+            if not mapping:
+                parsed = self._parse_dataset_urn_for_database_table(dataset_urn)
+                if parsed:
+                    mapping = self.db_table_mappings.get(parsed)
+                    if mapping:
+                        logging.info(
+                            "Recovered container mapping by database/table fallback for dataset_urn=%s database=%s table=%s",
+                            dataset_urn,
+                            parsed[0],
+                            parsed[1],
+                        )
+
+            container_urn = mapping.get("database") if mapping else None
             if not container_urn:
-                logging.warning(f"No container mapping for {dataset_urn=}")
+                parsed = self._parse_dataset_urn_for_database_table(dataset_urn)
+                logging.warning(
+                    "No container mapping for dataset_urn=%s parsed_database_table=%s",
+                    dataset_urn,
+                    parsed,
+                )
                 continue
 
             print(f"Assigning {dataset_urn=} to {container_urn=}")
@@ -121,8 +148,11 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
         return mcps
 
     @report_time
-    def _get_table_database_mappings(self, manifest) -> Dict[str, Dict[str, str]]:
+    def _get_table_database_mappings(
+        self, manifest
+    ) -> Tuple[Dict[str, Dict[str, str]], Dict[Tuple[str, str], Dict[str, str]]]:
         mappings = {}
+        db_table_mappings: Dict[Tuple[str, str], Dict[str, str]] = {}
         for node in manifest["nodes"]:
             if manifest["nodes"][node]["resource_type"] in ["model", "seed"]:
                 fqn = manifest["nodes"][node]["fqn"]
@@ -146,6 +176,23 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                     )
                     database_urn = database_key.as_urn()
 
-                    mappings[dataset_urn] = {"database": database_urn, "domain": fqn[1]}
+                    mapping = {"database": database_urn, "domain": fqn[1]}
+                    mappings[dataset_urn] = mapping
+                    db_table_mappings[(database, table_name)] = mapping
 
-        return mappings
+        return mappings, db_table_mappings
+
+    def _parse_dataset_urn_for_database_table(
+        self, dataset_urn: str
+    ) -> Optional[Tuple[str, str]]:
+        """Extract database and table from DataHub dataset URN name segment."""
+        match = re.match(r"^urn:li:dataset:\(urn:li:dataPlatform:[^,]+,([^,]+),[^\)]+\)$", dataset_urn)
+        if not match:
+            return None
+
+        dataset_name = match.group(1)
+        parts = dataset_name.split(".")
+        if len(parts) < 3:
+            return None
+
+        return parts[-2], parts[-1]

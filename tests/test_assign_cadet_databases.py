@@ -14,6 +14,23 @@ from ingestion.transformers.assign_cadet_databases import AssignCadetDatabases
 
 
 class TestAssignCadetDatabasesTransformer:
+    def test_em_urn_parses_to_database_table_fallback_key(self, mock_datahub_graph):
+        pipeline_context: PipelineContext = PipelineContext(run_id="abc")
+        pipeline_context.graph = mock_datahub_graph(DatahubClientConfig)
+        transformer = AssignCadetDatabases.create(
+            {
+                "manifest_s3_uri": "s3://test_bucket/prod/run_artefacts/latest/target/manifest.json",
+            },
+            pipeline_context,
+        )
+
+        parsed = transformer._parse_dataset_urn_for_database_table(
+            "urn:li:dataset:(urn:li:dataPlatform:dbt,cadet_electronic_monitoring.awsdatacatalog.prison_database.table2,PROD)"
+        )
+
+        assert parsed == ("prison_database", "table2")
+        assert transformer.db_table_mappings.get(parsed) is not None
+
     def test_pattern_add_dataset_domain_match(self, mock_datahub_graph):
         pipeline_context: PipelineContext = PipelineContext(run_id="abc")
         pipeline_context.graph = mock_datahub_graph(DatahubClientConfig)
