@@ -1,7 +1,10 @@
 import datahub.emitter.mce_builder as builder
+import datahub.emitter.mcp_builder as mcp_builder
 from datahub.ingestion.api.common import PipelineContext
 from datahub.ingestion.source.common.subtypes import DatasetContainerSubTypes
 from utils import WorkunitInspector
+
+from ingestion.config import ENV, PLATFORM
 
 from ingestion.create_cadet_databases_source.config import CreateCadetDatabasesConfig
 from ingestion.create_cadet_databases_source.source import CreateCadetDatabases
@@ -57,3 +60,24 @@ class TestCreateCadetDatabases:
             "urn:li:tag:dc_display_in_catalogue",
             "urn:li:tag:Courts and tribunals",
         }
+
+    def test_uses_configured_platform_instance(self):
+        platform_instance = "cadet_electronic_monitoring.awsdatacatalog"
+        source = CreateCadetDatabases(
+            ctx=PipelineContext(run_id="domain-source-test"),
+            config=CreateCadetDatabasesConfig(
+                manifest_s3_uri="s3://test_bucket/prod/run_artefacts/latest/target/manifest.json",
+                database_metadata_s3_uri="s3://test_bucket/prod/run_artefacts/latest/target/database_metadata.json",
+                platform_instance=platform_instance,
+            ),
+        )
+        results = WorkunitInspector(source.get_workunits())
+        expected_urn = mcp_builder.DatabaseKey(
+            database="prison_database",
+            platform=PLATFORM,
+            instance=platform_instance,
+            env=ENV,
+            backcompat_env_as_instance=True,
+        ).as_urn()
+
+        assert results.entity(expected_urn)

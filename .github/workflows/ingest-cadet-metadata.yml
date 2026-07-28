@@ -32,7 +32,7 @@ on:
         description: "Instance name for AssignDatabase transformer mappings to be built"
         type: string
         required: false
-        default: "cadet.awsdatacatalog"
+        default: ""
     secrets:
       DATAHUB_GMS_TOKEN:
         description: "API Key for datahub GMS"
@@ -70,9 +70,29 @@ jobs:
         run: |
           aws s3 ls ${{ inputs.S3_TARGET_LOCATION }}/manifest.json
           aws s3 ls ${{ inputs.S3_TARGET_LOCATION }}/catalog.json
+
+      - name: Resolve cadet instance
+        run: |
+          RESOLVED_CADET_INSTANCE="${{ inputs.CADET_INSTANCE }}"
+          if [ -z "$RESOLVED_CADET_INSTANCE" ]; then
+            case "${{ inputs.CADET_INGESTION_RECIPE_PATH }}" in
+              "ingestion/cadet_electronic_monitoring.yaml")
+                RESOLVED_CADET_INSTANCE="cadet_electronic_monitoring.awsdatacatalog"
+                ;;
+              "ingestion/cadet_digital_prison_reporting.yaml")
+                RESOLVED_CADET_INSTANCE="cadet_digital_prison_reporting.awsdatacatalog"
+                ;;
+              *)
+                RESOLVED_CADET_INSTANCE="cadet.awsdatacatalog"
+                ;;
+            esac
+          fi
+          echo "CADET_INSTANCE=$RESOLVED_CADET_INSTANCE" >> "$GITHUB_ENV"
+
       - name: Inject S3 location to cadet databases
         env:
           S3_TARGET_LOCATION: ${{ inputs.S3_TARGET_LOCATION }}
+          CADET_INSTANCE: ${{ env.CADET_INSTANCE }}
         run: |
           mkdir -p ingestion/processed
           envsubst < ingestion/create_cadet_databases.yaml > ingestion/processed/create_cadet_databases.yaml
@@ -82,7 +102,7 @@ jobs:
           DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
           DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
           DATAHUB_TELEMETRY_ENABLED: false
-          CADET_INSTANCE: ${{ inputs.CADET_INSTANCE }}
+          CADET_INSTANCE: ${{ env.CADET_INSTANCE }}
         run: time uv run datahub ingest -c ingestion/processed/create_cadet_databases.yaml
 
       - name: Collate run results paths from cadet runs
@@ -95,7 +115,7 @@ jobs:
           DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
           DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
           DATAHUB_TELEMETRY_ENABLED: false
-          CADET_INSTANCE: ${{ inputs.CADET_INSTANCE }}
+          CADET_INSTANCE: ${{ env.CADET_INSTANCE }}
         run: |
           time uv run datahub ingest -c ${{ inputs.CADET_INGESTION_RECIPE_PATH }} --report-to output.json || true
           if [ ! -f output.json ]; then

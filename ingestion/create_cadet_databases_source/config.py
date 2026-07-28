@@ -8,6 +8,8 @@ from datahub.ingestion.source.state.stateful_ingestion_base import (
 )
 from pydantic import Field
 
+from ingestion.config import INSTANCE
+
 
 class CreateCadetDatabasesConfig(StatefulIngestionConfigBase):
     manifest_s3_uri: str = Field(
@@ -15,6 +17,10 @@ class CreateCadetDatabasesConfig(StatefulIngestionConfigBase):
     )
     database_metadata_s3_uri: str = Field(
         description="s3 path to database_metadata json", default=None
+    )
+    platform_instance: str = Field(
+        description="Platform instance used to build cadet container and seed dataset URNs",
+        default=INSTANCE,
     )
     stateful_ingestion: Optional[StatefulStaleMetadataRemovalConfig] = Field(
         description="""

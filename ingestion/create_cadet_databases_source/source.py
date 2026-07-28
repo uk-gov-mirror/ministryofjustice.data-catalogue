@@ -19,7 +19,7 @@ from datahub.ingestion.source.state.stateful_ingestion_base import (
 )
 from datahub.metadata.schema_classes import GlobalTagsClass, TagAssociationClass
 
-from ingestion.config import ENV, INSTANCE, PLATFORM
+from ingestion.config import ENV, PLATFORM
 from ingestion.create_cadet_databases_source.config import CreateCadetDatabasesConfig
 from ingestion.ingestion_utils import (
     NodeLookup,
@@ -115,7 +115,7 @@ class CreateCadetDatabases(StatefulIngestionSourceBase):
             database_container_key = mcp_builder.DatabaseKey(
                 database=database_name,
                 platform=PLATFORM,
-                instance=INSTANCE,
+                instance=self.source_config.platform_instance,
                 env=ENV,
                 backcompat_env_as_instance=True,
             )
@@ -185,7 +185,7 @@ class CreateCadetDatabases(StatefulIngestionSourceBase):
             dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
                 platform=PLATFORM,
                 name=f"{database}.{table}",
-                platform_instance=INSTANCE,
+                platform_instance=self.source_config.platform_instance,
             )
             mcp: MetadataChangeProposalWrapper = MetadataChangeProposalWrapper(
                 entityUrn=dataset_urn,

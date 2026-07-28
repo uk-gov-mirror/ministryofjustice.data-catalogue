@@ -65,3 +65,27 @@ class TestAssignCadetDatabasesTransformer:
         assert isinstance(output[0].record, MetadataChangeProposalWrapper)
         assert output[0].record.aspect is not None
         assert isinstance(output[0].record.aspect, models.ContainerClass)
+
+    def test_uses_configured_platform_instance(self, mock_datahub_graph):
+        pipeline_context: PipelineContext = PipelineContext(run_id="abc")
+        pipeline_context.graph = mock_datahub_graph(DatahubClientConfig)
+        platform_instance = "cadet_electronic_monitoring.awsdatacatalog"
+        expected_key = mcp_builder.DatabaseKey(
+            database="prison_database",
+            platform=PLATFORM,
+            instance=platform_instance,
+            env=ENV,
+            backcompat_env_as_instance=True,
+        )
+
+        output = run_dataset_transformer_pipeline(
+            transformer_type=AssignCadetDatabases,
+            aspect=models.GlobalTagsClass(tags=[]),
+            config={
+                "manifest_s3_uri": "s3://test_bucket/prod/run_artefacts/latest/target/manifest.json",
+                "platform_instance": platform_instance,
+            },
+            pipeline_context=pipeline_context,
+        )
+
+        assert output[2].record.aspect.container == expected_key.as_urn()

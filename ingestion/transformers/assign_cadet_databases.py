@@ -32,6 +32,7 @@ logging.basicConfig(level=logging.DEBUG)
 class AssignCadetDatabasesConfig(ConfigModel):
     # dataset_urn -> data product urn
     manifest_s3_uri: str
+    platform_instance: str = INSTANCE
 
 
 class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
@@ -46,6 +47,7 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
         super().__init__()
         self.ctx = ctx
         self.config = config
+        self.platform_instance = self.config.platform_instance
         self.processed_tags = {}
         manifest = get_cadet_metadata_json(self.config.manifest_s3_uri)
         self.mappings = self._get_table_database_mappings(manifest)
@@ -134,13 +136,13 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                     dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
                         name=f"{database}.{table_name}",
                         platform=PLATFORM,
-                        platform_instance=INSTANCE,
+                        platform_instance=self.platform_instance,
                         env=ENV,
                     )
                     database_key = mcp_builder.DatabaseKey(
                         database=database,
                         platform=PLATFORM,
-                        instance=INSTANCE,
+                        instance=self.platform_instance,
                         env=ENV,
                         backcompat_env_as_instance=True,
                     )

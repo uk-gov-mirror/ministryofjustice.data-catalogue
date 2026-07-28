@@ -60,6 +60,7 @@ transformers:
   - type: "ingestion.transformers.assign_cadet_databases.AssignCadetDatabases"
     config:
       manifest_s3_uri: "s3://emds-prod-cadt/em_data_artefacts/prod/run_artefacts/emds-deploy-docs/latest/target/manifest.json"
+      platform_instance: cadet_electronic_monitoring.awsdatacatalog
   - type: "simple_add_dataset_properties"
     config:
       properties:
