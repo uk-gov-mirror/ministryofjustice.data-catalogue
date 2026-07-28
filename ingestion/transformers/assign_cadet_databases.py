@@ -59,6 +59,13 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
             len(self.db_table_mappings),
             INSTANCE,
         )
+        print(
+            "AssignCadetDatabases setup: "
+            f"urn_keys={len(self.mappings)} "
+            f"db_table_keys={len(self.db_table_mappings)} "
+            f"instance={INSTANCE} "
+            f"em_hotfix_database={self.em_hotfix_database_name}"
+        )
 
     @classmethod
     def create(cls, config_dict: dict, ctx: PipelineContext) -> "AssignCadetDatabases":
@@ -114,6 +121,8 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
             )
 
         print("Assigning datasets to databases")
+        fallback_match_count = 0
+        hotfix_match_count = 0
         for dataset_urn in self.entity_map.keys():
             mapping = self.mappings.get(dataset_urn)
             parsed = self._parse_dataset_urn_for_database_table(dataset_urn)
@@ -121,11 +130,18 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                 if parsed:
                     mapping = self.db_table_mappings.get(parsed)
                     if mapping:
+                        fallback_match_count += 1
                         logging.info(
                             "Recovered container mapping by database/table fallback for dataset_urn=%s database=%s table=%s",
                             dataset_urn,
                             parsed[0],
                             parsed[1],
+                        )
+                        print(
+                            "AssignCadetDatabases fallback matched: "
+                            f"dataset_urn={dataset_urn} "
+                            f"database={parsed[0]} "
+                            f"table={parsed[1]}"
                         )
 
             container_urn = mapping.get("database") if mapping else None
@@ -133,13 +149,18 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                 not container_urn
                 and parsed
                 and parsed[0] == self.em_hotfix_database_name
-                and "cadet_electronic_monitoring.awsdatacatalog." in dataset_urn
+                and "cadet_electronic_monitoring." in dataset_urn
             ):
                 container_urn = self._make_database_container_urn(parsed[0])
+                hotfix_match_count += 1
                 logging.info(
                     "Applied EM data_insights hotfix mapping for dataset_urn=%s -> container_urn=%s",
                     dataset_urn,
                     container_urn,
+                )
+                print(
+                    "AssignCadetDatabases hotfix applied: "
+                    f"dataset_urn={dataset_urn} -> container_urn={container_urn}"
                 )
 
             if not container_urn:
@@ -157,6 +178,13 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                     aspect=ContainerClass(container=f"{container_urn}"),
                 )
             )
+
+        print(
+            "AssignCadetDatabases summary: "
+            f"datasets_seen={len(self.entity_map)} "
+            f"fallback_matches={fallback_match_count} "
+            f"hotfix_matches={hotfix_match_count}"
+        )
 
         return mcps
 
