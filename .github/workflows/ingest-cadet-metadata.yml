@@ -70,6 +70,15 @@ jobs:
         run: |
           aws s3 ls ${{ inputs.S3_TARGET_LOCATION }}/manifest.json
           aws s3 ls ${{ inputs.S3_TARGET_LOCATION }}/catalog.json
+
+      - name: Diagnose EM manifest data_insights entries
+        if: ${{ inputs.CADET_INSTANCE == 'cadet_electronic_monitoring.awsdatacatalog' }}
+        env:
+          CADET_INSTANCE: ${{ inputs.CADET_INSTANCE }}
+        run: |
+          uv run python ingestion/diagnose_em_manifest.py \
+            --manifest-uri ${{ inputs.S3_TARGET_LOCATION }}/manifest.json \
+            --cadet-instance "${{ inputs.CADET_INSTANCE }}"
       - name: Inject S3 location to cadet databases
         env:
           S3_TARGET_LOCATION: ${{ inputs.S3_TARGET_LOCATION }}
