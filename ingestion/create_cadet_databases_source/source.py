@@ -214,52 +214,56 @@ class CreateCadetDatabases(StatefulIngestionSourceBase):
         domain_lookup = NodeLookup()
         tag_mappings = {}
         top_level_subject_areas = get_subject_areas()
-        for node in manifest["nodes"]:
-            if manifest["nodes"][node]["resource_type"] in ["model", "seed"]:
-                # fqn = fully qualified name
-                fqn = manifest["nodes"][node]["fqn"]
-                if not validate_fqn(fqn):
-                    # Non-standard naming: derive database/table from schema and name directly.
-                    schema = manifest["nodes"][node].get("schema")
-                    name = manifest["nodes"][node].get("name") or manifest["nodes"][node].get("alias")
-                    if not schema or not name:
-                        continue
-                    database, table = schema, name
+
+        # Sources live in manifest["sources"], not manifest["nodes"].
+        all_entries: list[tuple[dict, str]] = [
+            (manifest["nodes"][k], "nodes") for k in manifest.get("nodes", {})
+            if manifest["nodes"][k]["resource_type"] in ["model", "seed"]
+        ] + [
+            (manifest["sources"][k], "sources") for k in manifest.get("sources", {})
+        ]
+
+        for node, collection in all_entries:
+            fqn = node["fqn"]
+            if collection == "sources" or not validate_fqn(fqn):
+                schema = node.get("schema")
+                name = node.get("identifier") or node.get("name") or node.get("alias")
+                if not schema or not name:
+                    continue
+                database, table = schema, name
+            else:
+                database, table = parse_database_and_table_names(node)
+
+            database_metadata_dict = {}
+
+            try:
+                database_metadata_dict = databases_metadata["databases"][
+                    database
+                ].copy()
+            except KeyError:
+                logging.debug(f"{database} - has no database level metadata")
+
+            database_metadata_dict["domain"] = fqn[1]
+            database_tags = database_metadata_dict.get("tags", [])
+            if "tags" in database_metadata_dict:
+                database_metadata_dict.pop("tags")
+            database_metadata_tuple = tuple(database_metadata_dict.items())
+            database_mappings.add((database, database_metadata_tuple))
+            domain_lookup.set(database, table, database_metadata_dict["domain"])
+
+            tags = get_tags(node)
+            if database_tags:
+                tags.update(database_tags)
+            if not any(tag in top_level_subject_areas for tag in tags):
+                logging.warning(
+                    f"No top level tags found in database metadata file for {database}"
+                )
+
+            if tags:
+                if tag_mappings.get(database):
+                    tag_mappings[database].update(tags)
                 else:
-                    database, table = parse_database_and_table_names(
-                        manifest["nodes"][node]
-                    )
-
-                database_metadata_dict = {}
-
-                try:
-                    database_metadata_dict = databases_metadata["databases"][
-                        database
-                    ].copy()
-                except KeyError:
-                    logging.debug(f"{database} - has no database level metadata")
-
-                database_metadata_dict["domain"] = fqn[1]
-                database_tags = database_metadata_dict.get("tags", [])
-                if "tags" in database_metadata_dict:
-                    database_metadata_dict.pop("tags")
-                database_metadata_tuple = tuple(database_metadata_dict.items())
-                database_mappings.add((database, database_metadata_tuple))
-                domain_lookup.set(database, table, database_metadata_dict["domain"])
-
-                tags = get_tags(manifest["nodes"][node])
-                if database_tags:
-                    tags.update(database_tags)
-                if not any(tag in top_level_subject_areas for tag in tags):
-                    logging.warning(
-                        f"No top level tags found in database metadata file for {database}"
-                    )
-
-                if tags:
-                    if tag_mappings.get(database):
-                        tag_mappings[database].update(tags)
-                    else:
-                        tag_mappings[database] = tags
+                    tag_mappings[database] = tags
 
         return database_mappings, domain_lookup, tag_mappings
 

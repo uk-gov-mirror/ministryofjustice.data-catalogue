@@ -123,36 +123,42 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
     @report_time
     def _get_table_database_mappings(self, manifest) -> Dict[str, Dict[str, str]]:
         mappings = {}
-        for node in manifest["nodes"]:
-            if manifest["nodes"][node]["resource_type"] in ["model", "seed"]:
-                fqn = manifest["nodes"][node]["fqn"]
-                if not validate_fqn(fqn):
-                    # Non-standard naming: derive database from schema and table from name directly.
-                    schema = manifest["nodes"][node].get("schema")
-                    name = manifest["nodes"][node].get("name") or manifest["nodes"][node].get("alias")
-                    if not schema or not name:
-                        continue
-                    database, table_name = schema, name
-                else:
-                    database, table_name = parse_database_and_table_names(
-                        manifest["nodes"][node]
-                    )
 
-                dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
-                    name=f"{database}.{table_name}",
-                    platform=PLATFORM,
-                    platform_instance=INSTANCE,
-                    env=ENV,
-                )
-                database_key = mcp_builder.DatabaseKey(
-                    database=database,
-                    platform=PLATFORM,
-                    instance=INSTANCE,
-                    env=ENV,
-                    backcompat_env_as_instance=True,
-                )
-                database_urn = database_key.as_urn()
+        # Build a unified list of (node_dict, node_collection) to iterate.
+        # Sources live in manifest["sources"], not manifest["nodes"].
+        all_entries: list[tuple[dict, str]] = [
+            (manifest["nodes"][k], "nodes") for k in manifest.get("nodes", {})
+            if manifest["nodes"][k]["resource_type"] in ["model", "seed"]
+        ] + [
+            (manifest["sources"][k], "sources") for k in manifest.get("sources", {})
+        ]
 
-                mappings[dataset_urn] = {"database": database_urn, "domain": fqn[1]}
+        for node, collection in all_entries:
+            fqn = node["fqn"]
+            if collection == "sources" or not validate_fqn(fqn):
+                schema = node.get("schema")
+                name = node.get("identifier") or node.get("name") or node.get("alias")
+                if not schema or not name:
+                    continue
+                database, table_name = schema, name
+            else:
+                database, table_name = parse_database_and_table_names(node)
+
+            dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
+                name=f"{database}.{table_name}",
+                platform=PLATFORM,
+                platform_instance=INSTANCE,
+                env=ENV,
+            )
+            database_key = mcp_builder.DatabaseKey(
+                database=database,
+                platform=PLATFORM,
+                instance=INSTANCE,
+                env=ENV,
+                backcompat_env_as_instance=True,
+            )
+            database_urn = database_key.as_urn()
+
+            mappings[dataset_urn] = {"database": database_urn, "domain": fqn[1]}
 
         return mappings
