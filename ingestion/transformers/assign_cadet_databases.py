@@ -80,9 +80,21 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
     ) -> Optional[Aspect]:
         if aspect is None:
             return None
-        in_global_tags_aspect: GlobalTagsClass = cast(GlobalTagsClass, aspect)
-        domain = self.mappings.get(entity_urn, {}).get("domain")
-        if domain:
+        if not isinstance(aspect, GlobalTagsClass):
+            print(
+                "AssignCadetDatabases skipping non-GlobalTags aspect: "
+                f"entity_urn={entity_urn} aspect_name={aspect_name} "
+                f"aspect_type={type(aspect).__name__}"
+            )
+            return aspect
+
+        in_global_tags_aspect = aspect
+
+        try:
+            domain = self.mappings.get(entity_urn, {}).get("domain")
+            if not isinstance(domain, str) or not domain:
+                return cast(Aspect, in_global_tags_aspect)
+
             subject_area = domains_to_subject_areas.get(domain.lower())
             subject_area_tag_urn = (
                 mce_builder.make_tag_urn(tag=subject_area) if subject_area else None
@@ -97,6 +109,13 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                 # Keep track of tags added so that we can create them in handle_end_of_stream
                 for tag in tags_to_add:
                     self.processed_tags.setdefault(tag.tag, tag)
+        except Exception as e:
+            print(
+                "AssignCadetDatabases transform_aspect error: "
+                f"entity_urn={entity_urn} aspect_name={aspect_name} "
+                f"error={type(e).__name__}: {e}"
+            )
+            return cast(Aspect, in_global_tags_aspect)
 
         return cast(Aspect, in_global_tags_aspect)
 
