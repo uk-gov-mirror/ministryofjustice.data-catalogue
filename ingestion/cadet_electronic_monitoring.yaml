@@ -14,7 +14,9 @@ source:
     platform_instance: cadet_electronic_monitoring
     target_platform: athena
     target_platform_instance: athena_cadet
-    infer_dbt_schemas: true
+    # Temporary workaround: dbt source can raise KeyError('bool') when inferring
+    # schema types from catalog metadata. Disable inference so IsPartOf links emit.
+    infer_dbt_schemas: false
 
     # Tags, terms and owners from CaDeT should override what's already in the catalogue
     write_semantics: OVERRIDE
