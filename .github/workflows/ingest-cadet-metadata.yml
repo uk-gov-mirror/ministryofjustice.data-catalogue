@@ -116,6 +116,18 @@ jobs:
           echo "Sink failures (first 5):"
           jq '.sink.report.failures[:5]' output.json
 
+      - name: Repair EM data_insights IsPartOf links
+        if: ${{ inputs.CADET_INSTANCE == 'cadet_electronic_monitoring.awsdatacatalog' }}
+        env:
+          DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+          DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
+          DATAHUB_TELEMETRY_ENABLED: false
+          CADET_INSTANCE: ${{ inputs.CADET_INSTANCE }}
+        run: |
+          uv run python ingestion/fix_database_is_part_of.py \
+            --manifest-s3-uri "${{ inputs.S3_TARGET_LOCATION }}/manifest.json" \
+            --database data_insights
+
       - name: Notify on unexpected ingestion failures
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d #v4.0.0
         if: env.sink_failure_count > 9
