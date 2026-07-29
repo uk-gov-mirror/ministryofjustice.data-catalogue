@@ -1,6 +1,8 @@
 import argparse
 import logging
 import os
+import sys
+from pathlib import Path
 
 import datahub.emitter.mce_builder as mce_builder
 import datahub.emitter.mcp_builder as mcp_builder
@@ -8,6 +10,10 @@ from datahub.emitter.mcp import MetadataChangeProposalWrapper
 from datahub.ingestion.graph.client import DataHubGraph
 from datahub.ingestion.graph.config import DatahubClientConfig
 from datahub.metadata.schema_classes import ContainerClass
+
+# Ensure absolute imports like `ingestion.config` work when this file is run
+# as a script via `python ingestion/fix_database_is_part_of.py`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ingestion.config import ENV, INSTANCE, PLATFORM
 from ingestion.ingestion_utils import (
