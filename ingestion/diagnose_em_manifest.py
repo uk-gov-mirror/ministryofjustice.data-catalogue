@@ -1,15 +1,13 @@
 """
-Diagnostic script: reads the EM manifest from S3 and logs the structure of
-data_insights entries so we can understand how to map them to containers.
-
-Usage:
-    uv run python ingestion/diagnose_em_manifest.py \
-        --manifest-uri s3://emds-prod-cadt/em_data_artefacts/prod/run_artefacts/emds-deploy-docs/latest/target/manifest.json
+Diagnostic script: reads the EM manifest and checks exactly what the
+AssignCadetDatabases transformer would generate as mapping keys for
+data_insights entries, and what entity URNs the dbt source emits.
 """
 import argparse
 import json
 import logging
 import os
+import sys
 
 import boto3
 import datahub.emitter.mce_builder as mce_builder
@@ -20,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 TARGET_DATABASE = "data_insights"
 
+# add parent dir to path so we can import ingestion modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 
 def load_manifest(s3_uri: str) -> dict:
     s3 = boto3.client("s3")
@@ -29,48 +30,14 @@ def load_manifest(s3_uri: str) -> dict:
     return json.loads(response["Body"].read().decode("utf-8"), strict=False)
 
 
-def summarise_node(node_id: str, node: dict, section: str, instance: str) -> None:
-    schema = node.get("schema", "")
-    name = node.get("name", "")
-    alias = node.get("alias", "")
-    identifier = node.get("identifier", "")
-    fqn = node.get("fqn", [])
-    resource_type = node.get("resource_type", "")
-    tags = node.get("tags", [])
-    database_field = node.get("database", "")
-
-    logger.info("--- %s: %s ---", section, node_id)
-    logger.info("  resource_type : %s", resource_type)
-    logger.info("  database      : %s", database_field)
-    logger.info("  schema        : %s", schema)
-    logger.info("  name          : %s", name)
-    logger.info("  alias         : %s", alias)
-    logger.info("  identifier    : %s", identifier)
-    logger.info("  fqn           : %s", fqn)
-    logger.info("  fqn[-1]       : %s", fqn[-1] if fqn else "(empty)")
-    logger.info("  tags          : %s", tags)
-
-    # What URN would the dbt DataHub source generate?
-    table = identifier or name or alias
-    if schema and table:
-        dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
-            name=f"{schema}.{table}",
-            platform="dbt",
-            platform_instance=instance,
-            env="PROD",
-        )
-        logger.info("  expected_dataset_urn : %s", dataset_urn)
-
-        db_key = mcp_builder.DatabaseKey(
-            database=schema,
-            platform="dbt",
-            instance=instance,
-            env="PROD",
-            backcompat_env_as_instance=True,
-        )
-        logger.info("  expected_container_urn : %s", db_key.as_urn())
-    else:
-        logger.info("  expected_dataset_urn : (could not derive — schema or name missing)")
+def build_mapping_urn(schema: str, table_name: str, instance: str) -> str:
+    """What the AssignCadetDatabases transformer puts as the mapping key."""
+    return mce_builder.make_dataset_urn_with_platform_instance(
+        name=f"{schema}.{table_name}",
+        platform="dbt",
+        platform_instance=instance,
+        env="PROD",
+    )
 
 
 def main() -> None:
@@ -83,38 +50,60 @@ def main() -> None:
     parser.add_argument("--target-database", default=TARGET_DATABASE)
     args = parser.parse_args()
 
-    logger.info("Loading manifest from %s", args.manifest_uri)
+    logger.info("CADET_INSTANCE used: %s", args.cadet_instance)
+    logger.info("Loading manifest from %s\n", args.manifest_uri)
     manifest = load_manifest(args.manifest_uri)
 
-    logger.info("\n====== NODES (resource_type: model / seed / test) ======")
-    found_nodes = 0
+    # Import the parse/validate helpers from the actual ingestion code
+    from ingestion.ingestion_utils import validate_fqn, parse_database_and_table_names
+
+    logger.info("====== DATA_INSIGHTS NODES — transformer mapping analysis ======")
     for node_id, node in manifest.get("nodes", {}).items():
         schema = node.get("schema", "")
         fqn = node.get("fqn", [])
-        if schema == args.target_database or args.target_database in fqn:
-            found_nodes += 1
-            summarise_node(node_id, node, "node", args.cadet_instance)
+        if schema != args.target_database and args.target_database not in fqn:
+            continue
 
-    logger.info("Found %d node(s) related to '%s'", found_nodes, args.target_database)
+        name = node.get("name", "")
+        alias = node.get("alias", "")
+        resource_type = node.get("resource_type", "")
 
-    logger.info("\n====== SOURCES (resource_type: source) ======")
-    found_sources = 0
-    for source_id, source in manifest.get("sources", {}).items():
-        schema = source.get("schema", "")
-        fqn = source.get("fqn", [])
-        if schema == args.target_database or args.target_database in fqn:
-            found_sources += 1
-            summarise_node(source_id, source, "source", args.cadet_instance)
+        logger.info("\n--- %s ---", node_id)
+        logger.info("  schema/alias/name  : %s / %s / %s", schema, alias, name)
+        logger.info("  resource_type      : %s", resource_type)
+        logger.info("  fqn[-1]            : %s", fqn[-1] if fqn else "")
+        logger.info("  validate_fqn       : %s", validate_fqn(fqn))
 
-    logger.info("Found %d source(s) related to '%s'", found_sources, args.target_database)
+        # What the transformer mapping key would be
+        if validate_fqn(fqn):
+            db, tbl = parse_database_and_table_names(node)
+        else:
+            db = schema
+            tbl = node.get("identifier") or name or alias
 
-    logger.info("\n====== MANIFEST TOP-LEVEL KEYS ======")
-    logger.info("%s", list(manifest.keys()))
+        mapping_key = build_mapping_urn(db, tbl, args.cadet_instance)
+        logger.info("  transformer mapping key  : %s", mapping_key)
 
-    total_nodes = len(manifest.get("nodes", {}))
-    total_sources = len(manifest.get("sources", {}))
-    logger.info("Total nodes: %d, Total sources: %d", total_nodes, total_sources)
+        # What the dbt DataHub source emits as entity URN (uses alias when set)
+        dbt_source_table = alias or name
+        dbt_source_urn = build_mapping_urn(schema, dbt_source_table, args.cadet_instance)
+        logger.info("  dbt source entity URN    : %s", dbt_source_urn)
+        logger.info("  MATCH                    : %s", mapping_key == dbt_source_urn)
+
+        if mapping_key != dbt_source_urn:
+            logger.warning("  !!! MISMATCH — no container will be assigned !!!")
+
+    logger.info("\n====== RECIPE platform_instance check ======")
+    import yaml
+    recipe_path = os.path.join(os.path.dirname(__file__), "cadet_electronic_monitoring.yaml")
+    with open(recipe_path) as f:
+        recipe = yaml.safe_load(f)
+    recipe_instance = recipe.get("source", {}).get("config", {}).get("platform_instance", "NOT SET")
+    logger.info("  recipe platform_instance : %s", recipe_instance)
+    logger.info("  CADET_INSTANCE env var   : %s", args.cadet_instance)
+    logger.info("  recipe == CADET_INSTANCE : %s", recipe_instance == args.cadet_instance)
 
 
 if __name__ == "__main__":
     main()
+
