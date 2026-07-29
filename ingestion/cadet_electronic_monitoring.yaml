@@ -22,12 +22,14 @@ source:
     write_semantics: OVERRIDE
 
     entities_enabled:
-      test_results: "YES"
+      # Temporary workaround while debugging source KeyError('bool').
+      # IsPartOf links only need model/seed/source datasets.
+      test_results: "NO"
       seeds: "YES"
       snapshots: "NO"
       models: "YES"
       sources: "YES"
-      test_definitions: "YES"
+      test_definitions: "NO"
     stateful_ingestion:
       enabled: true
       remove_stale_metadata: true
