@@ -47,8 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--platform-instance",
-        default="cadet_electronic_monitoring.awsdatacatalog",
-        help="DataHub platform instance name for the database URN.",
+        default=None,
+        help="DataHub platform instance name for the database URN. Defaults to CADET_INSTANCE env var or 'cadet_electronic_monitoring.awsdatacatalog'.",
     )
     parser.add_argument(
         "--env",
@@ -69,6 +69,15 @@ def _get_graph() -> DataHubGraph:
         token=os.environ["DATAHUB_GMS_TOKEN"],
     )
     return DataHubGraph(server_config)
+
+
+def _get_platform_instance() -> str:
+    """Get platform instance from environment or use default."""
+    instance = os.environ.get("CADET_INSTANCE")
+    if not instance:
+        logging.warning("CADET_INSTANCE not set, defaulting to 'cadet_electronic_monitoring.awsdatacatalog'")
+        instance = "cadet_electronic_monitoring.awsdatacatalog"
+    return instance
 
 
 def _build_database_urn(database_name: str, platform: str, platform_instance: str, env: str) -> str:
@@ -103,10 +112,14 @@ def main() -> None:
 
     dataset_urns = args.dataset_urns or DEFAULT_DATASET_URNS
     graph = _get_graph()
+    
+    # Use environment variable if --platform-instance not provided
+    platform_instance = args.platform_instance or _get_platform_instance()
+    
     database_urn = _build_database_urn(
         database_name=args.dataset_database,
         platform=args.platform,
-        platform_instance=args.platform_instance,
+        platform_instance=platform_instance,
         env=args.env,
     )
 

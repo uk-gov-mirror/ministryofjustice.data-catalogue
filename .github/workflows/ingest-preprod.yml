@@ -59,6 +59,7 @@ jobs:
         env:
           DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
           DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+          CADET_INSTANCE: cadet_electronic_monitoring.awsdatacatalog
         run: |
           uv run python ingestion/repair_data_insights_relationships.py --apply
 
