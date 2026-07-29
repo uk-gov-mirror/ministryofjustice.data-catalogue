@@ -218,40 +218,48 @@ class CreateCadetDatabases(StatefulIngestionSourceBase):
             if manifest["nodes"][node]["resource_type"] in ["model", "seed"]:
                 # fqn = fully qualified name
                 fqn = manifest["nodes"][node]["fqn"]
-                if validate_fqn(fqn):
+                if not validate_fqn(fqn):
+                    # Non-standard naming: derive database/table from schema and name directly.
+                    schema = manifest["nodes"][node].get("schema")
+                    name = manifest["nodes"][node].get("name") or manifest["nodes"][node].get("alias")
+                    if not schema or not name:
+                        continue
+                    database, table = schema, name
+                else:
                     database, table = parse_database_and_table_names(
                         manifest["nodes"][node]
                     )
-                    database_metadata_dict = {}
 
-                    try:
-                        database_metadata_dict = databases_metadata["databases"][
-                            database
-                        ].copy()
-                    except KeyError:
-                        logging.debug(f"{database} - has no database level metadata")
+                database_metadata_dict = {}
 
-                    database_metadata_dict["domain"] = fqn[1]
-                    database_tags = database_metadata_dict.get("tags", [])
-                    if "tags" in database_metadata_dict:
-                        database_metadata_dict.pop("tags")
-                    database_metadata_tuple = tuple(database_metadata_dict.items())
-                    database_mappings.add((database, database_metadata_tuple))
-                    domain_lookup.set(database, table, database_metadata_dict["domain"])
+                try:
+                    database_metadata_dict = databases_metadata["databases"][
+                        database
+                    ].copy()
+                except KeyError:
+                    logging.debug(f"{database} - has no database level metadata")
 
-                    tags = get_tags(manifest["nodes"][node])
-                    if database_tags:
-                        tags.update(database_tags)
-                    if not any(tag in top_level_subject_areas for tag in tags):
-                        logging.warning(
-                            f"No top level tags found in database metadata file for {database}"
-                        )
+                database_metadata_dict["domain"] = fqn[1]
+                database_tags = database_metadata_dict.get("tags", [])
+                if "tags" in database_metadata_dict:
+                    database_metadata_dict.pop("tags")
+                database_metadata_tuple = tuple(database_metadata_dict.items())
+                database_mappings.add((database, database_metadata_tuple))
+                domain_lookup.set(database, table, database_metadata_dict["domain"])
 
-                    if tags:
-                        if tag_mappings.get(database):
-                            tag_mappings[database].update(tags)
-                        else:
-                            tag_mappings[database] = tags
+                tags = get_tags(manifest["nodes"][node])
+                if database_tags:
+                    tags.update(database_tags)
+                if not any(tag in top_level_subject_areas for tag in tags):
+                    logging.warning(
+                        f"No top level tags found in database metadata file for {database}"
+                    )
+
+                if tags:
+                    if tag_mappings.get(database):
+                        tag_mappings[database].update(tags)
+                    else:
+                        tag_mappings[database] = tags
 
         return database_mappings, domain_lookup, tag_mappings
 
