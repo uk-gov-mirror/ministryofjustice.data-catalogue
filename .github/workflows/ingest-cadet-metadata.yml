@@ -97,7 +97,12 @@ jobs:
           DATAHUB_TELEMETRY_ENABLED: false
           CADET_INSTANCE: ${{ inputs.CADET_INSTANCE }}
         run: |
-          time uv run datahub ingest -c ${{ inputs.CADET_INGESTION_RECIPE_PATH }} --report-to output.json || true
+          set +e
+          time uv run datahub ingest -c ${{ inputs.CADET_INGESTION_RECIPE_PATH }} --report-to output.json
+          INGEST_EXIT_CODE=$?
+          set -e
+          echo "Ingest command exit code: $INGEST_EXIT_CODE"
+          echo "ingest_exit_code=$INGEST_EXIT_CODE" >> $GITHUB_ENV
           if [ ! -f output.json ]; then
             echo "Ingestion output file not found. Failing the job."
             exit 1
@@ -106,6 +111,10 @@ jobs:
           SOURCE_FAILURE_COUNT=$(jq '.source.report.failures | length' output.json)
           echo "sink_failure_count=$SINK_FAILURE_COUNT" >> $GITHUB_ENV
           echo "source_failure_count=$SOURCE_FAILURE_COUNT" >> $GITHUB_ENV
+          echo "Source failures (first 5):"
+          jq '.source.report.failures[:5]' output.json
+          echo "Sink failures (first 5):"
+          jq '.sink.report.failures[:5]' output.json
 
       - name: Notify on unexpected ingestion failures
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d #v4.0.0
