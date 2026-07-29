@@ -14,6 +14,7 @@ from datahub.metadata.schema_classes import (
     GlobalTagsClass,
     MetadataChangeProposalClass,
     TagAssociationClass,
+    RelationshipClass,
 )
 from datahub.utilities.urns.tag_urn import TagUrn
 
@@ -111,10 +112,18 @@ class AssignCadetDatabases(DatasetTransformer, metaclass=ABCMeta):
                 continue
 
             print(f"Assigning {dataset_urn=} to {container_urn=}")
+            # Emit ContainerClass to set the direct container field
             mcps.append(
                 MetadataChangeProposalWrapper(
                     entityUrn=f"{dataset_urn}",
                     aspect=ContainerClass(container=f"{container_urn}"),
+                )
+            )
+            # Emit explicit IsPartOf relationship to ensure it's queryable
+            mcps.append(
+                MetadataChangeProposalWrapper(
+                    entityUrn=f"{dataset_urn}",
+                    aspect=RelationshipClass(relationshipType="IsPartOf", direction="OUTGOING", entity=f"{container_urn}"),
                 )
             )
 
