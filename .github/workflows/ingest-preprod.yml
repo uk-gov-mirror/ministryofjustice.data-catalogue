@@ -38,30 +38,30 @@ jobs:
       CADET_METADATA_ROLE_TO_ASSUME: ${{ secrets.EM_CADET_METADATA_ROLE_TO_ASSUME }}
       SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
 
-  repair-data-insights-preprod:
-    needs: ingest-em-cadet-preprod
-    runs-on: ubuntu-latest
-    environment: preprod-ingestion
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+  # repair-data-insights-preprod:
+  #   needs: ingest-em-cadet-preprod
+  #   runs-on: ubuntu-latest
+  #   environment: preprod-ingestion
+  #   steps:
+  #     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Install UV
-        id: setup-uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          version: ${{ vars.UV_VERSION }}
-          python-version: ${{ vars.PYTHON_VERSION }}
+  #     - name: Install UV
+  #       id: setup-uv
+  #       uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+  #       with:
+  #         version: ${{ vars.UV_VERSION }}
+  #         python-version: ${{ vars.PYTHON_VERSION }}
 
-      - name: Install Project Dependencies
-        run: uv sync --locked
+  #     - name: Install Project Dependencies
+  #       run: uv sync --locked
 
-      - name: Repair data_insights table relationships
-        env:
-          DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
-          DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
-          CADET_INSTANCE: cadet_electronic_monitoring.awsdatacatalog
-        run: |
-          uv run python ingestion/repair_data_insights_relationships.py --apply
+  #     - name: Repair data_insights table relationships
+  #       env:
+  #         DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
+  #         DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+  #         CADET_INSTANCE: cadet_electronic_monitoring.awsdatacatalog
+  #       run: |
+  #         uv run python ingestion/repair_data_insights_relationships.py --apply
 
   # ingest-dpr-cadet-preprod:
   #   uses: ./.github/workflows/ingest-cadet-metadata.yml
