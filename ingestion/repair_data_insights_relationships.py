@@ -6,6 +6,11 @@ from typing import Iterable
 import datahub.emitter.mcp_builder as mcp_builder
 from datahub.ingestion.graph.client import DataHubGraph
 from datahub.ingestion.graph.config import DatahubClientConfig
+from datahub.metadata.schema_classes import (
+    ContainerClass,
+    DatasetSnapshotClass,
+    MetadataChangeEventClass,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -95,15 +100,17 @@ def repair_relationships(dataset_urns: Iterable[str], database_urn: str, graph: 
         if not apply:
             continue
 
-        # Re-index the stored container aspect so DataHub re-derives the IsPartOf graph edge.
-        # This avoids re-emitting ContainerClass, which triggers the same broken side-effect path.
-        graph.restore_indices(urn_pattern=dataset_urn, aspect="container")
-        logger.info("Restored container index for dataset urn=%s", dataset_urn)
-
-    if apply:
-        # Also restore the container entity's index so the INCOMING side rebuilds.
-        graph.restore_indices(urn_pattern=database_urn)
-        logger.info("Restored index for container urn=%s", database_urn)
+        # Use the old Restli MCE path (POST /entities?action=ingest) rather than
+        # the OpenAPI v3 MCP path, which in DataHub 1.6 does not derive IsPartOf
+        # graph edges from the container aspect.
+        mce = MetadataChangeEventClass(
+            proposedSnapshot=DatasetSnapshotClass(
+                urn=dataset_urn,
+                aspects=[ContainerClass(container=database_urn)],
+            )
+        )
+        graph.emit_mce(mce)
+        logger.info("Emitted MCE ContainerClass for dataset urn=%s", dataset_urn)
 
 
 def main() -> None:
