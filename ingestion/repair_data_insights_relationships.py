@@ -4,13 +4,10 @@ import os
 from typing import Iterable
 
 import datahub.emitter.mcp_builder as mcp_builder
+from datahub.emitter.mcp import MetadataChangeProposalWrapper
 from datahub.ingestion.graph.client import DataHubGraph
 from datahub.ingestion.graph.config import DatahubClientConfig
-from datahub.metadata.schema_classes import (
-    ContainerClass,
-    DatasetSnapshotClass,
-    MetadataChangeEventClass,
-)
+from datahub.metadata.schema_classes import ContainerClass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,6 +67,10 @@ def _get_graph() -> DataHubGraph:
     server_config = DatahubClientConfig(
         server=os.environ["DATAHUB_GMS_URL"],
         token=os.environ["DATAHUB_GMS_TOKEN"],
+        # Force the legacy Restli path (/aspects?action=ingestProposal).
+        # The OpenAPI v3 path (auto-selected when the server advertises it)
+        # does not derive IsPartOf from ContainerClass in DataHub 1.6.
+        openapi_ingestion=False,
     )
     return DataHubGraph(server_config)
 
@@ -100,17 +101,13 @@ def repair_relationships(dataset_urns: Iterable[str], database_urn: str, graph: 
         if not apply:
             continue
 
-        # Use the old Restli MCE path (POST /entities?action=ingest) rather than
-        # the OpenAPI v3 MCP path, which in DataHub 1.6 does not derive IsPartOf
-        # graph edges from the container aspect.
-        mce = MetadataChangeEventClass(
-            proposedSnapshot=DatasetSnapshotClass(
-                urn=dataset_urn,
-                aspects=[ContainerClass(container=database_urn)],
+        graph.emit_mcp(
+            MetadataChangeProposalWrapper(
+                entityUrn=dataset_urn,
+                aspect=ContainerClass(container=database_urn),
             )
         )
-        graph.emit_mce(mce)
-        logger.info("Emitted MCE ContainerClass for dataset urn=%s", dataset_urn)
+        logger.info("Emitted ContainerClass via Restli for dataset urn=%s", dataset_urn)
 
 
 def main() -> None:
