@@ -96,18 +96,58 @@ def _build_database_urn(database_name: str, platform: str, platform_instance: st
 
 
 def repair_relationships(dataset_urns: Iterable[str], database_urn: str, graph: DataHubGraph, apply: bool) -> None:
+    # Introspect GraphQL mutations related to container/relationship assignment.
+    introspect_query = """
+        query {
+            __schema {
+                mutationType {
+                    fields {
+                        name
+                        description
+                    }
+                }
+            }
+        }
+    """
+    try:
+        result = graph.execute_graphql(introspect_query)
+        fields = result.get("__schema", {}).get("mutationType", {}).get("fields", [])
+        container_mutations = [f["name"] for f in fields if any(
+            k in f["name"].lower() for k in ["container", "relationship", "ispartof", "membership"]
+        )]
+        logger.info("Container-related GraphQL mutations available: %s", container_mutations)
+        all_mutations = sorted(f["name"] for f in fields)
+        logger.info("All mutations: %s", all_mutations)
+    except Exception as exc:
+        logger.error("Introspection failed: %s", exc)
+
     for dataset_urn in dataset_urns:
         logger.info("Repairing container relationship for dataset urn=%s -> container urn=%s", dataset_urn, database_urn)
         if not apply:
             continue
 
-        graph.emit_mcp(
-            MetadataChangeProposalWrapper(
-                entityUrn=dataset_urn,
-                aspect=ContainerClass(container=database_urn),
+        # Try the batchSetContainerForEntities mutation used by the DataHub UI for manual container assignment.
+        mutation = """
+            mutation batchSetContainerForEntities($input: BatchSetContainerInput!) {
+                batchSetContainerForEntities(input: $input)
+            }
+        """
+        try:
+            response = graph.execute_graphql(mutation, {
+                "input": {
+                    "containerUrn": database_urn,
+                    "entityUrns": [dataset_urn],
+                }
+            })
+            logger.info("batchSetContainerForEntities response for %s: %s", dataset_urn.split("data_insights.")[-1], response)
+        except Exception as exc:
+            logger.warning("batchSetContainerForEntities failed (%s), trying ContainerClass MCP", exc)
+            graph.emit_mcp(
+                MetadataChangeProposalWrapper(
+                    entityUrn=dataset_urn,
+                    aspect=ContainerClass(container=database_urn),
+                )
             )
-        )
-        logger.info("Emitted ContainerClass via Restli for dataset urn=%s", dataset_urn)
 
 
 def main() -> None:
