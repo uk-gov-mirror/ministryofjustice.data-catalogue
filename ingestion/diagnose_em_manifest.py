@@ -60,6 +60,32 @@ def check_relationships(dataset_urns: list[str], expected_container_urn: str) ->
         }
     """
 
+    # Query the container entity itself to check existence and INCOMING children
+    container_query = """
+        query($urn: String!) {
+            container(urn: $urn) {
+                urn
+                exists
+                status { removed }
+                relationships(input: {types: ["IsPartOf"], direction: INCOMING, start: 0, count: 10}) {
+                    total
+                }
+            }
+        }
+    """
+
+    try:
+        container_result = graph.execute_graphql(container_query, {"urn": expected_container_urn})
+        c = container_result.get("container") or {}
+        c_exists = c.get("exists", False)
+        c_removed = (c.get("status") or {}).get("removed", False)
+        c_incoming = (c.get("relationships") or {}).get("total", 0)
+        logger.info("  container exists        : %s", c_exists)
+        logger.info("  container soft-deleted  : %s", c_removed)
+        logger.info("  container INCOMING total: %d", c_incoming)
+    except Exception as exc:
+        logger.error("  ERROR querying container entity: %s", exc)
+
     for dataset_urn in dataset_urns:
         try:
             result = graph.execute_graphql(is_part_of_query, {"urn": dataset_urn})
