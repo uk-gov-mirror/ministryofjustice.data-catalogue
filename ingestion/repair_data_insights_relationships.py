@@ -4,10 +4,8 @@ import os
 from typing import Iterable
 
 import datahub.emitter.mcp_builder as mcp_builder
-from datahub.emitter.mcp import MetadataChangeProposalWrapper
 from datahub.ingestion.graph.client import DataHubGraph
 from datahub.ingestion.graph.config import DatahubClientConfig
-from datahub.metadata.schema_classes import ContainerClass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -97,13 +95,15 @@ def repair_relationships(dataset_urns: Iterable[str], database_urn: str, graph: 
         if not apply:
             continue
 
-        graph.emit_mcp(
-            MetadataChangeProposalWrapper(
-                entityUrn=dataset_urn,
-                aspect=ContainerClass(container=database_urn),
-            )
-        )
-        logger.info("Emitted ContainerClass MCP for dataset urn=%s", dataset_urn)
+        # Re-index the stored container aspect so DataHub re-derives the IsPartOf graph edge.
+        # This avoids re-emitting ContainerClass, which triggers the same broken side-effect path.
+        graph.restore_indices(urn_pattern=dataset_urn, aspect="container")
+        logger.info("Restored container index for dataset urn=%s", dataset_urn)
+
+    if apply:
+        # Also restore the container entity's index so the INCOMING side rebuilds.
+        graph.restore_indices(urn_pattern=database_urn)
+        logger.info("Restored index for container urn=%s", database_urn)
 
 
 def main() -> None:
