@@ -40,6 +40,7 @@ def build_mapping_urn(schema: str, table_name: str, instance: str) -> str:
 def check_relationships(dataset_urns: list[str], expected_container_urn: str) -> None:
     from datahub.ingestion.graph.client import DataHubGraph
     from datahub.ingestion.graph.config import DatahubClientConfig
+    from datahub.ingestion.graph.openapi import RelationshipDirection
 
     graph = DataHubGraph(DatahubClientConfig(
         server=os.environ["DATAHUB_GMS_URL"],
@@ -97,6 +98,23 @@ def check_relationships(dataset_urns: list[str], expected_container_urn: str) ->
             linked_urns = [r["entity"]["urn"] for r in relationships.get("relationships", [])]
             direct_container = container.get("urn", "none")
             linked_to_expected = expected_container_urn in linked_urns
+
+            logger.info("  %s", dataset_urn.split("data_insights.")[-1])
+            logger.info("    IsPartOf total      : %d", total)
+            logger.info("    linked containers   : %s", linked_urns or "[]")
+            logger.info("    direct container    : %s", direct_container)
+            logger.info("    linked to expected  : %s  (expected: %s)", linked_to_expected, expected_container_urn)
+
+            # Scroll ALL relationship types to detect if edges exist under a different type name
+            all_rels = list(graph.scroll_relationships(
+                source_urns=[dataset_urn],
+                direction=RelationshipDirection.OUTGOING,
+                count=20,
+            ).relationships)
+            rel_types = [(r.relationship_type, r.destination_urn) for r in all_rels]
+            logger.info("    ALL outgoing rels   : %s", rel_types or "[]")
+        except Exception as exc:
+            logger.error("    ERROR querying %s: %s", dataset_urn, exc)
 
             logger.info("  %s", dataset_urn.split("data_insights.")[-1])
             logger.info("    IsPartOf total      : %d", total)
