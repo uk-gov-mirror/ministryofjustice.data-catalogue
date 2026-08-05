@@ -107,10 +107,7 @@ jobs:
       PLACEHOLDER_TECHNICAL_CONTACT: ${{ secrets.PLACEHOLDER_TECHNICAL_CONTACT }}
       DLPES_DWP_HMRC_DATASHARE_CONTACT: ${{ secrets.DLPES_DWP_HMRC_DATASHARE_CONTACT }}
 
-  # Use this job to fix broken parent-child relationships in any database.
-  # The below is for the dlpes_dfe_datashare dataset, which is used for the DfE datashare. 
-  # The job should be run after ingest-glue-data-preprod. This broken link is caused by
-  # the below delete jobs, so we have to run them carefully.
+
   
   ingest-moj-publications-preprod:
     uses: ./.github/workflows/ingest-moj-publications.yml
