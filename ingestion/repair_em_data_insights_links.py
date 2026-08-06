@@ -13,12 +13,20 @@ from datahub.ingestion.graph.client import DataHubGraph
 from datahub.ingestion.graph.config import DatahubClientConfig
 from datahub.metadata.schema_classes import ContainerClass
 
-from ingestion.config import ENV, INSTANCE, PLATFORM
-from ingestion.ingestion_utils import (
-    get_cadet_metadata_json,
-    parse_database_and_table_names,
-    validate_fqn,
-)
+try:
+    from ingestion.config import ENV, INSTANCE, PLATFORM
+    from ingestion.ingestion_utils import (
+        get_cadet_metadata_json,
+        parse_database_and_table_names,
+        validate_fqn,
+    )
+except ModuleNotFoundError:
+    from config import ENV, INSTANCE, PLATFORM
+    from ingestion_utils import (
+        get_cadet_metadata_json,
+        parse_database_and_table_names,
+        validate_fqn,
+    )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

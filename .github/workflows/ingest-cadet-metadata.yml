@@ -138,6 +138,7 @@ jobs:
           DATAHUB_TELEMETRY_ENABLED: false
           CADET_INSTANCE: ${{ inputs.CADET_INSTANCE }}
         run: |
+          export PYTHONPATH="$PWD"
           uv run python ingestion/repair_em_data_insights_links.py \
             --manifest-s3-uri "${{ inputs.S3_TARGET_LOCATION }}/manifest.json" \
             --database data_insights
