@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Validate that data_insights database and its expected tables are present in the EM manifest."""
+"""Validate that data_insights database and its expected tables are present in the EM manifest
+and print the resulting DataHub URNs for database container and each table dataset."""
 
 import argparse
 import json
 import sys
 
 import boto3
+import datahub.emitter.mce_builder as mce_builder
+import datahub.emitter.mcp_builder as mcp_builder
 
+try:
+    from ingestion.config import ENV, INSTANCE, PLATFORM
+except ModuleNotFoundError:
+    from config import ENV, INSTANCE, PLATFORM
+
+# Table names after stripping the schema prefix (dbt uses schema__table naming)
 EXPECTED_TABLES = {
     "caseload",
     "daily_caseload_count",
@@ -23,25 +32,57 @@ def load_manifest(manifest_s3_uri: str) -> dict:
     return json.loads(s3.get_object(Bucket=bucket, Key=key)["Body"].read())
 
 
+def make_container_urn(database: str) -> str:
+    key = mcp_builder.DatabaseKey(
+        database=database,
+        platform=PLATFORM,
+        instance=INSTANCE,
+        env=ENV,
+        backcompat_env_as_instance=True,
+    )
+    return key.as_urn()
+
+
+def make_dataset_urn(database: str, table: str) -> str:
+    return mce_builder.make_dataset_urn_with_platform_instance(
+        name=f"{database}.{table}",
+        platform=PLATFORM,
+        platform_instance=INSTANCE,
+        env=ENV,
+    )
+
+
 def validate(manifest: dict, database: str) -> int:
-    found_tables: set[str] = set()
+    # dbt node names use schema__table convention; table name is the part after __
+    found: dict[str, str] = {}  # table_bare_name -> node name
     for node in manifest.get("nodes", {}).values():
         if node.get("resource_type") not in ("model", "seed"):
             continue
-        # schema is the dbt schema name, which maps to the database in our naming
         if node.get("schema", "").lower() != database.lower():
             continue
-        found_tables.add(node.get("name", "").lower())
+        node_name = node.get("name", "").lower()
+        # strip database prefix if present (e.g. data_insights__caseload -> caseload)
+        bare = node_name.removeprefix(f"{database}__")
+        found[bare] = node_name
 
-    missing = EXPECTED_TABLES - found_tables
+    missing = EXPECTED_TABLES - found.keys()
 
-    print(f"Database '{database}' tables found in manifest: {sorted(found_tables)}")
+    container_urn = make_container_urn(database)
+    print(f"\nDatabase container URN:")
+    print(f"  {container_urn}")
+
+    print(f"\nTables found in manifest ({len(found)}):")
+    for bare, node_name in sorted(found.items()):
+        dataset_urn = make_dataset_urn(database, bare)
+        status = "✓" if bare in EXPECTED_TABLES else " "
+        print(f"  [{status}] {node_name}")
+        print(f"       URN: {dataset_urn}")
 
     if missing:
-        print(f"FAIL: Missing expected tables: {sorted(missing)}", file=sys.stderr)
+        print(f"\nFAIL: Missing expected tables: {sorted(missing)}", file=sys.stderr)
         return 1
 
-    print(f"OK: All {len(EXPECTED_TABLES)} expected tables present in '{database}'")
+    print(f"\nOK: All {len(EXPECTED_TABLES)} expected tables present in '{database}'")
     return 0
 
 
