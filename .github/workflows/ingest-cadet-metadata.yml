@@ -140,8 +140,16 @@ jobs:
         run: |
           export PYTHONPATH="$PWD"
           uv run python ingestion/repair_em_data_insights_links.py \
-            --manifest-s3-uri "${{ inputs.S3_TARGET_LOCATION }}/manifest.json" \
-            --database data_insights
+            --database data_insights \
+            --dataset-platform dbt \
+            --dataset-platform-instance cadet_electronic_monitoring.awsdatacatalog \
+            --container-urn urn:li:container:a059eadc0974dc1f7909966821f2c7eb \
+            --table caseload \
+            --table daily_caseload_count \
+            --table device_activations \
+            --table position \
+            --table curfew_atv \
+            --table device_wearer_violations
 
       - name: Notify on unexpected ingestion failures
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d #v4.0.0

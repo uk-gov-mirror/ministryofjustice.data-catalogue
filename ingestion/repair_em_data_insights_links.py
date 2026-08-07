@@ -5,6 +5,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 
 import datahub.emitter.mce_builder as mce_builder
 import datahub.emitter.mcp_builder as mcp_builder
@@ -53,7 +54,12 @@ def build_graph() -> DataHubGraph:
     )
 
 
-def get_target_mappings(manifest: dict, database_name: str) -> dict[str, str]:
+def get_target_mappings(
+    manifest: dict,
+    database_name: str,
+    dataset_platform: str,
+    dataset_platform_instance: str,
+) -> dict[str, str]:
     """Return mapping of dataset URN -> expected database container URN."""
     mappings: dict[str, str] = {}
     for node_id, node in manifest.get("nodes", {}).items():
@@ -71,19 +77,39 @@ def get_target_mappings(manifest: dict, database_name: str) -> dict[str, str]:
 
         dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
             name=f"{database}.{table_name}",
-            platform=PLATFORM,
-            platform_instance=INSTANCE,
+            platform=dataset_platform,
+            platform_instance=dataset_platform_instance,
             env=ENV,
         )
         database_key = mcp_builder.DatabaseKey(
             database=database,
-            platform=PLATFORM,
-            instance=INSTANCE,
+            platform=dataset_platform,
+            instance=dataset_platform_instance,
             env=ENV,
             backcompat_env_as_instance=True,
         )
         mappings[dataset_urn] = database_key.as_urn()
 
+    return mappings
+
+
+def get_explicit_mappings(
+    database_name: str,
+    table_names: list[str],
+    dataset_platform: str,
+    dataset_platform_instance: str,
+    container_urn: str,
+) -> dict[str, str]:
+    """Return mapping of explicit dataset URNs to a provided container URN."""
+    mappings: dict[str, str] = {}
+    for table_name in table_names:
+        dataset_urn = mce_builder.make_dataset_urn_with_platform_instance(
+            name=f"{database_name}.{table_name}",
+            platform=dataset_platform,
+            platform_instance=dataset_platform_instance,
+            env=ENV,
+        )
+        mappings[dataset_urn] = container_urn
     return mappings
 
 
@@ -121,16 +147,72 @@ def verify_links(graph: DataHubGraph, dataset_to_container: dict[str, str]) -> l
     return missing
 
 
+def verify_links_with_retries(
+    graph: DataHubGraph,
+    dataset_to_container: dict[str, str],
+    attempts: int = 5,
+    delay_seconds: int = 5,
+) -> list[str]:
+    missing = verify_links(graph, dataset_to_container)
+    for attempt in range(1, attempts + 1):
+        if not missing:
+            return missing
+
+        logger.warning(
+            "IsPartOf still missing for %d datasets (retry %d/%d in %ds)",
+            len(missing),
+            attempt,
+            attempts,
+            delay_seconds,
+        )
+        time.sleep(delay_seconds)
+        missing = verify_links(graph, dataset_to_container)
+
+    return missing
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest-s3-uri", required=True)
+    parser.add_argument("--manifest-s3-uri")
     parser.add_argument("--database", default="data_insights")
+    parser.add_argument("--dataset-platform", default=PLATFORM)
+    parser.add_argument("--dataset-platform-instance", default=INSTANCE)
+    parser.add_argument("--container-urn")
+    parser.add_argument("--table", action="append", default=[])
     args = parser.parse_args()
 
-    logger.info("Using CADET instance=%s platform=%s env=%s", INSTANCE, PLATFORM, ENV)
+    logger.info(
+        "Using dataset platform=%s instance=%s env=%s",
+        args.dataset_platform,
+        args.dataset_platform_instance,
+        ENV,
+    )
 
-    manifest = get_cadet_metadata_json(args.manifest_s3_uri)
-    dataset_to_container = get_target_mappings(manifest, args.database)
+    if args.container_urn and args.table:
+        logger.info(
+            "Using explicit link mode with container=%s for %d tables",
+            args.container_urn,
+            len(args.table),
+        )
+        dataset_to_container = get_explicit_mappings(
+            args.database,
+            args.table,
+            args.dataset_platform,
+            args.dataset_platform_instance,
+            args.container_urn,
+        )
+    else:
+        if not args.manifest_s3_uri:
+            logger.error("--manifest-s3-uri is required unless explicit --container-urn and --table are provided")
+            return 1
+
+        manifest = get_cadet_metadata_json(args.manifest_s3_uri)
+        dataset_to_container = get_target_mappings(
+            manifest,
+            args.database,
+            args.dataset_platform,
+            args.dataset_platform_instance,
+        )
 
     if not dataset_to_container:
         logger.error("No datasets found for database '%s'", args.database)
@@ -146,7 +228,7 @@ def main() -> int:
     repaired = repair_links(graph, dataset_to_container)
     logger.info("Repair attempted for %d datasets", repaired)
 
-    missing_after_repair = verify_links(graph, dataset_to_container)
+    missing_after_repair = verify_links_with_retries(graph, dataset_to_container)
     if missing_after_repair:
         logger.error(
             "Still missing IsPartOf relationship for %d datasets", len(missing_after_repair)
