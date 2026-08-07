@@ -121,10 +121,23 @@ def has_is_part_of_relationship(graph: DataHubGraph, dataset_urn: str) -> bool:
     return isinstance(total, int) and total > 0
 
 
+def has_expected_container_aspect(
+    graph: DataHubGraph,
+    dataset_urn: str,
+    expected_container_urn: str,
+) -> bool:
+    container_aspect = graph.get_aspect(dataset_urn, ContainerClass)
+    if not container_aspect:
+        return False
+
+    actual_container = getattr(container_aspect, "container", None)
+    return actual_container == expected_container_urn
+
+
 def repair_links(graph: DataHubGraph, dataset_to_container: dict[str, str]) -> int:
     repaired = 0
     for dataset_urn, container_urn in dataset_to_container.items():
-        if has_is_part_of_relationship(graph, dataset_urn):
+        if has_expected_container_aspect(graph, dataset_urn, container_urn):
             continue
 
         logger.info("Repairing missing link for dataset=%s container=%s", dataset_urn, container_urn)
@@ -141,8 +154,8 @@ def repair_links(graph: DataHubGraph, dataset_to_container: dict[str, str]) -> i
 
 def verify_links(graph: DataHubGraph, dataset_to_container: dict[str, str]) -> list[str]:
     missing = []
-    for dataset_urn in dataset_to_container:
-        if not has_is_part_of_relationship(graph, dataset_urn):
+    for dataset_urn, container_urn in dataset_to_container.items():
+        if not has_expected_container_aspect(graph, dataset_urn, container_urn):
             missing.append(dataset_urn)
     return missing
 
@@ -236,6 +249,16 @@ def main() -> int:
         for urn in missing_after_repair[:20]:
             logger.error("Missing link: %s", urn)
         return 2
+
+    # Relationship edges can lag or be missing while Container aspects are set.
+    relationship_missing = [
+        urn for urn in dataset_to_container if not has_is_part_of_relationship(graph, urn)
+    ]
+    if relationship_missing:
+        logger.warning(
+            "Container aspects set for all datasets, but IsPartOf relationship is still missing for %d datasets",
+            len(relationship_missing),
+        )
 
     logger.info("All data_insights dataset links are present")
     return 0
