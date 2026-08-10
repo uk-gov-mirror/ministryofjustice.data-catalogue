@@ -133,12 +133,12 @@ jobs:
   #   secrets:
   #     DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
 
-  # run-delete-jobs-prod:
-  #   if: github.event_name == 'workflow_dispatch' && inputs.DELETE_JOB_SET != 'none'
-  #   uses: ./.github/workflows/ingest-delete-jobs.yml
-  #   with:
-  #     ENVIRONMENT: prod-ingestion
-  #     DELETE_JOB_SET: ${{ inputs.DELETE_JOB_SET }}
-  #     FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME: ${{ inputs.FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME }}
-  #   secrets:
-  #     DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+  run-delete-jobs-prod:
+    if: github.event_name == 'workflow_dispatch' && inputs.DELETE_JOB_SET != 'none'
+    uses: ./.github/workflows/delete-jobs.yml
+    with:
+      ENVIRONMENT: prod-ingestion
+      DELETE_JOB_SET: ${{ inputs.DELETE_JOB_SET }}
+      FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME: ${{ inputs.FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME }}
+    secrets:
+      DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
