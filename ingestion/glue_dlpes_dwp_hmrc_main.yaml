@@ -59,7 +59,7 @@ transformers:
             - "urn:li:tag:Prisons and probation"
             - "urn:li:tag:Employment and benefits"
             - "urn:li:tag:Police national computer"
-          "^urn:li:dataset:\\(urn:li:dataPlatform:glue,dlpes_dwp_hmrc_main_datashare\\.(dwp_hmrc_last_coa_codes|dwp_hmrc_last_coa_code_england_wales|oa_2011_to_2021_converter|cohort*),[^\\)]+\\)$":
+          "^urn:li:dataset:\\(urn:li:dataPlatform:glue,dlpes_dwp_hmrc_main_datashare\\.(dwp_hmrc_last_coa_codes|dwp_hmrc_last_coa_code_england_wales|oa_2011_to_2021_converter|cohort.*),[^\\)]+\\)$":
             - "urn:li:tag:Prison"
             - "urn:li:tag:Probation"
             - "urn:li:tag:Prisons and probation"
