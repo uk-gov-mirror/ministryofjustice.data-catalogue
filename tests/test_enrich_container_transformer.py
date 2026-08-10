@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import datahub.metadata.schema_classes as models
 from datahub.ingestion.api.common import PipelineContext
 from datahub.metadata.schema_classes import ContainerPropertiesClass
@@ -114,6 +116,39 @@ class TestAddPropertiesTransformer:
         assert aspect.name == "test_container"
         assert aspect.description == "Test container description"
         assert aspect.customProperties == {"old_key": "old_value"}
+
+    def test_add_properties_transformer_creates_missing_container_properties(self):
+        pipeline_context: PipelineContext = PipelineContext(run_id="test_run")
+        pipeline_context.graph = MagicMock()
+        pipeline_context.graph.get_entity_raw.return_value = {
+            "aspects": {
+                "containerProperties": {
+                    "value": {
+                        "name": "test_container",
+                    }
+                }
+            }
+        }
+
+        transformer = AddPropertiesTransformer(
+            config=AddPropertiesTransformerConfig(
+                description="Test container description",
+                properties={"key1": "value1"},
+            ),
+            ctx=pipeline_context,
+        )
+
+        aspect = transformer.transform_aspect(
+            entity_urn="urn:li:container:test_container",
+            aspect_name="containerProperties",
+            aspect=None,
+        )
+
+        assert aspect
+        assert isinstance(aspect, ContainerPropertiesClass)
+        assert aspect.name == "test_container"
+        assert aspect.description == "Test container description"
+        assert aspect.customProperties == {"key1": "value1"}
 
 class TestAddTagTransformer:
     def test_add_tag_transformer_overwrite(self):
