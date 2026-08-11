@@ -91,55 +91,55 @@ jobs:
   #     DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
   #     SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
   
-  ingest-glue-data-prod:
-    uses: ./.github/workflows/ingest-glue-data.yml
-    with:
-      ENVIRONMENT: prod-ingestion
-      GLUE_CONFIGS: ${{ inputs.GLUE_CONFIGS || 'contracts courts_criminal courts_family fines just_link sop dlpes_dfe dlpes_dwp_mini dlpes_hmrc_mini dlpes_dwp_hmrc_main' }}
-    secrets:
-      DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
-      GLUE_ROLE_TO_ASSUME: ${{ secrets.GLUE_ROLE_TO_ASSUME }}
-      SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
-      SOP_TECHNICAL_CONTACT: ${{ secrets.SOP_TECHNICAL_CONTACT }}
-      CONTRACTS_TECHNICAL_CONTACT: ${{ secrets.CONTRACTS_TECHNICAL_CONTACT }}
-      COURTS_CRIMINAL_TECHNICAL_CONTACT: ${{ secrets.COURTS_CRIMINAL_TECHNICAL_CONTACT }}
-      COURTS_FAMILY_TECHNICAL_CONTACT: ${{ secrets.COURTS_FAMILY_TECHNICAL_CONTACT }}
-      JUST_LINK_TECHNICAL_CONTACT: ${{ secrets.JUST_LINK_TECHNICAL_CONTACT }}
-      FINES_TECHNICAL_CONTACT: ${{ secrets.FINES_TECHNICAL_CONTACT }}
-      PLACEHOLDER_TECHNICAL_CONTACT: ${{ secrets.PLACEHOLDER_TECHNICAL_CONTACT }}
-      DLPES_DWP_HMRC_DATASHARE_CONTACT: ${{ secrets.DLPES_DWP_HMRC_DATASHARE_CONTACT }}
+  # ingest-glue-data-prod:
+  #   uses: ./.github/workflows/ingest-glue-data.yml
+  #   with:
+  #     ENVIRONMENT: prod-ingestion
+  #     GLUE_CONFIGS: ${{ inputs.GLUE_CONFIGS || 'contracts courts_criminal courts_family fines just_link sop dlpes_dfe dlpes_dwp_mini dlpes_hmrc_mini dlpes_dwp_hmrc_main' }}
+  #   secrets:
+  #     DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+  #     GLUE_ROLE_TO_ASSUME: ${{ secrets.GLUE_ROLE_TO_ASSUME }}
+  #     SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
+  #     SOP_TECHNICAL_CONTACT: ${{ secrets.SOP_TECHNICAL_CONTACT }}
+  #     CONTRACTS_TECHNICAL_CONTACT: ${{ secrets.CONTRACTS_TECHNICAL_CONTACT }}
+  #     COURTS_CRIMINAL_TECHNICAL_CONTACT: ${{ secrets.COURTS_CRIMINAL_TECHNICAL_CONTACT }}
+  #     COURTS_FAMILY_TECHNICAL_CONTACT: ${{ secrets.COURTS_FAMILY_TECHNICAL_CONTACT }}
+  #     JUST_LINK_TECHNICAL_CONTACT: ${{ secrets.JUST_LINK_TECHNICAL_CONTACT }}
+  #     FINES_TECHNICAL_CONTACT: ${{ secrets.FINES_TECHNICAL_CONTACT }}
+  #     PLACEHOLDER_TECHNICAL_CONTACT: ${{ secrets.PLACEHOLDER_TECHNICAL_CONTACT }}
+  #     DLPES_DWP_HMRC_DATASHARE_CONTACT: ${{ secrets.DLPES_DWP_HMRC_DATASHARE_CONTACT }}
 
-  rebuild-dwp-mini-container-links-prod:
-    if: github.event_name == 'workflow_dispatch' && inputs.REBUILD_DWP_MINI_CONTAINER_LINKS
-    needs: [ingest-glue-data-prod]
-    environment: prod-ingestion
-    timeout-minutes: 60
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+  # rebuild-dwp-mini-container-links-prod:
+  #   if: github.event_name == 'workflow_dispatch' && inputs.REBUILD_DWP_MINI_CONTAINER_LINKS
+  #   needs: [ingest-glue-data-prod]
+  #   environment: prod-ingestion
+  #   timeout-minutes: 60
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     id-token: write
+  #     contents: read
+  #   steps:
+  #     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Install UV
-        id: setup-uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          version: ${{ vars.UV_VERSION }}
-          python-version: ${{ vars.PYTHON_VERSION }}
+  #     - name: Install UV
+  #       id: setup-uv
+  #       uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+  #       with:
+  #         version: ${{ vars.UV_VERSION }}
+  #         python-version: ${{ vars.PYTHON_VERSION }}
 
-      - name: Install Project Dependencies
-        run: uv sync --locked
+  #     - name: Install Project Dependencies
+  #       run: uv sync --locked
 
-      - name: Replay dwp mini container links
-        env:
-          DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
-          DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
-        run: |
-          uv run python ingestion/rebuild_glue_container_links.py \
-            --database dlpes_dwp_mini_datashare \
-            --platform glue \
-            --env PROD
+  #     - name: Replay dwp mini container links
+  #       env:
+  #         DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL }}
+  #         DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+  #       run: |
+  #         uv run python ingestion/rebuild_glue_container_links.py \
+  #           --database dlpes_dwp_mini_datashare \
+  #           --platform glue \
+  #           --env PROD
   
   # ingest-moj-publications-prod:
   #   uses: ./.github/workflows/ingest-moj-publications.yml
@@ -170,12 +170,12 @@ jobs:
   #   secrets:
   #     DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
 
-  # run-delete-jobs-prod:
-  #   if: github.event_name == 'workflow_dispatch' && inputs.DELETE_JOB_SET != 'none'
-  #   uses: ./.github/workflows/delete-jobs.yml
-  #   with:
-  #     ENVIRONMENT: prod-ingestion
-  #     DELETE_JOB_SET: ${{ inputs.DELETE_JOB_SET }}
-  #     FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME: ${{ inputs.FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME }}
-  #   secrets:
-  #     DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+  run-delete-jobs-prod:
+    if: github.event_name == 'workflow_dispatch' && inputs.DELETE_JOB_SET != 'none'
+    uses: ./.github/workflows/delete-jobs.yml
+    with:
+      ENVIRONMENT: prod-ingestion
+      DELETE_JOB_SET: ${{ inputs.DELETE_JOB_SET }}
+      FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME: ${{ inputs.FORCE_EXPAND_CONTAINER_CHILDREN_WITHOUT_NAME }}
+    secrets:
+      DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
