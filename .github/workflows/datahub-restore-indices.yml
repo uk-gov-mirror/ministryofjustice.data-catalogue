@@ -90,6 +90,7 @@ jobs:
             --version "${CHART_VERSION}" \
             --namespace "${KUBE_NAMESPACE}" \
             --reuse-values \
+            --no-hooks \
             --set datahubUpgrade.restoreIndices.args.batchSize="${BATCH_SIZE}" \
             --set datahubUpgrade.restoreIndices.args.batchDelayMs="${BATCH_DELAY_MS}" \
             --set datahubUpgrade.restoreIndices.args.numThreads="${NUM_THREADS}" \
