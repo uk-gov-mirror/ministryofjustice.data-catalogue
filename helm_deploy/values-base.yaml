@@ -305,17 +305,6 @@ datahubUpgrade:
   enabled: true
   image:
     repository: acryldata/datahub-upgrade
-    args:
-        - "-u"
-        - "RestoreIndices"
-        - "-a"
-        - "batchSize=1000"
-        - "-a"
-        - "batchDelayMs=100"
-        - "-a"
-        - "clean"
-        - "-a"
-        - "urnBasedPagination=true"
     # tag: "v0.11.0"  # defaults to .global.datahub.version
   batchSize: 1000
   batchDelayMs: 500
@@ -337,16 +326,30 @@ datahubUpgrade:
   podAnnotations: {}
   extraSidecars: []
   restoreIndices:
+    image:
+      args:
+        - "-u"
+        - "RestoreIndices"
+        - "-a"
+        - "batchSize=1000"
+        - "-a"
+        - "batchDelayMs=500"
+        - "-a"
+        - "clean"
+        - "-a"
+        - "urnBasedPagination=true"
+        - "-a"
+        - "numThreads=3"
     # Custom labels to add to the CronJob metadata
     labels: {}
     # See https://docs.datahub.com/docs/how/restore-indices/#kubernetes for more parameters
-    args:
-      batchSize: "1000"
-      batchDelayMs: "500"
-      # Uses a key based paging strategy when scrolling through SQL rows instead of offset. Often faster for large sets of data
-      urnBasedPagination: "true"
-      # Specifies number of threads for processing pages of rows to restore
-      numThreads: "3"
+    # args:
+    #   batchSize: "1000"
+    #   batchDelayMs: "500"
+    #   # Uses a key based paging strategy when scrolling through SQL rows instead of offset. Often faster for large sets of data
+    #   urnBasedPagination: "true"
+    #   # Specifies number of threads for processing pages of rows to restore
+    #   numThreads: "3"
     resources:
       limits:
         cpu: 1000m
