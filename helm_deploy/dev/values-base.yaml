@@ -6,6 +6,16 @@ datahub-gms:
       value: "250"
     - name: ES_BULK_FLUSH_PERIOD
       value: "15"
+    # Workaround for a v1.6.0 GMS bug: the embedded MAE consumer crashes on
+    # startup (org.apache.avro.InvalidNumberEncodingException) when subscribed
+    # to both MetadataChangeLog_Versioned_v1 and MetadataChangeLog_Timeseries_v1
+    # at once. Redirecting Timeseries here leaves GMS handling Versioned only;
+    # Timeseries is handled by the standalone consumer deployed by the
+    # "deploy standalone timeseries MAE consumer" step in deploy-workflow.yml
+    # (see helm_deploy/mae-consumer-timeseries-values.yaml). Remove once
+    # DataHub ships a fix upstream.
+    - name: "METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME"
+      value: "zz_disabled_timeseries_mae_split_workaround"
 
 global:
   datahub_analytics_enabled: false

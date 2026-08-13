@@ -1,0 +1,45 @@
+# Values used ONLY to render the standalone MAE consumer manifest applied by
+# the "deploy standalone timeseries consumer" step in deploy-workflow.yml.
+#
+# This file is never passed to the real `helm upgrade datahub` install of the
+# main release - it exists purely so `helm template` can produce a correct
+# Deployment/Service for a single-purpose consumer that handles
+# MetadataChangeLog_Timeseries_v1 only, working around the v1.6.0 GMS bug
+# where the embedded MAE consumer crashes on startup
+# (org.apache.avro.InvalidNumberEncodingException) if subscribed to both
+# MetadataChangeLog_Versioned_v1 and MetadataChangeLog_Timeseries_v1 at once.
+#
+# GMS keeps handling MetadataChangeLog_Versioned_v1 (see the
+# METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME override on datahub-gms in
+# helm_deploy/<env>/values-base.yaml - per-environment because Helm doesn't
+# deep-merge arrays, see the note in values-base.yaml). This file's
+# `metadata_change_log_versioned_topic_name` override below is the mirror of
+# that: it redirects this consumer's Versioned subscription to a placeholder
+# so the two consumers never overlap or duplicate-process the same topic.
+#
+# Remove this file and its use in deploy-workflow.yml once DataHub ships a
+# fix and the datahub-gms overrides in the environment values files are
+# reverted.
+
+global:
+  datahub_standalone_consumers_enabled: true
+  datahub:
+    version: v1.6.0
+    systemUpdate:
+      enabled: false
+  kafka:
+    topics:
+      metadata_change_log_versioned_topic_name: zz_disabled_versioned_mae_split_workaround
+    consumer_groups:
+      metadata_change_log_kafka_consumer_group_id: generic-mae-consumer-job-client-timeseries-only
+
+datahub-mae-consumer:
+  securityContext:
+    runAsUser: 1000
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+      add: ["NET_BIND_SERVICE"]

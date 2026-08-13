@@ -213,7 +213,51 @@ jobs:
           --set global.sql.datasource.username=${POSTGRES_USERNAME} \
           --set global.sql.datasource.extraEnvs[0].value=${POSTGRES_DB_NAME}
 
-      - name: allow CP prometheus scraping 
+      - name: deploy standalone timeseries MAE consumer (v1.6.0 workaround)
+        # Only run where helm_deploy/<env>/values-base.yaml has the matching
+        # datahub-gms METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME override -
+        # without it, GMS would still fight this consumer over the same
+        # topic. Update this list as the workaround is rolled out further.
+        if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}
+        shell: bash
+        id: deploy-mae-timeseries-workaround
+        env:
+          CHART_VERSION: ${{ inputs.datahub_helm_version }}
+          OPENSEARCH_PROXY_HOST: ${{ secrets.OPENSEARCH_PROXY_HOST }}
+          POSTGRES_HOST: ${{ secrets.postgres_host }}
+          POSTGRES_URL: ${{ secrets.postgres_url }}
+          POSTGRES_USERNAME: ${{ secrets.postgres_username }}
+        # Renders (never installs) the datahub-mae-consumer subchart with
+        # standalone-consumer values so we can extract just its
+        # Deployment/Service and apply them directly. This works around a
+        # v1.6.0 GMS bug (see helm_deploy/mae-consumer-timeseries-values.yaml
+        # for the full explanation) that the chart's normal
+        # datahub_standalone_consumers_enabled flag can't express, since that
+        # flag would also disable GMS's own embedded consumer.
+        #
+        # Enabling that flag also renders datahub-mce-consumer as a side
+        # effect (same shared flag) - `--show-only` filters the output but
+        # Helm still evaluates every template first, so the DB --set
+        # overrides below are required for a clean render even though the
+        # MAE consumer itself never uses them.
+        #
+        # Remove this step once DataHub ships a fix upstream.
+        run: |
+          helm template datahub datahub/datahub \
+          --version ${CHART_VERSION} \
+          --values helm_deploy/values-base.yaml \
+          --values helm_deploy/${{inputs.env}}/values-base.yaml \
+          --values helm_deploy/mae-consumer-timeseries-values.yaml \
+          --namespace ${{ secrets.kube_namespace }} \
+          --set global.elasticsearch.host=${OPENSEARCH_PROXY_HOST} \
+          --set global.sql.datasource.host=${POSTGRES_HOST} \
+          --set global.sql.datasource.url=${POSTGRES_URL} \
+          --set global.sql.datasource.username=${POSTGRES_USERNAME} \
+          --show-only charts/datahub-mae-consumer/templates/service.yaml \
+          --show-only charts/datahub-mae-consumer/templates/deployment.yaml \
+          | kubectl apply -n ${{ secrets.kube_namespace }} -f -
+
+      - name: allow CP prometheus scraping
         shell: bash
         id: allow-prom-scrape
         env:
