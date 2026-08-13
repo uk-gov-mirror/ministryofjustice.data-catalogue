@@ -213,9 +213,37 @@ jobs:
           --set global.sql.datasource.username=${POSTGRES_USERNAME} \
           --set global.sql.datasource.extraEnvs[0].value=${POSTGRES_DB_NAME}
 
+      - name: redirect GMS off the Timeseries topic (v1.6.0 workaround)
+        # Update this list as the workaround is rolled out further (must
+        # match the "deploy standalone timeseries MAE consumer" step below).
+        if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}
+        shell: bash
+        id: gms-timeseries-workaround
+        env:
+          KUBE_NAMESPACE: ${{ secrets.kube_namespace }}
+        # GMS's embedded MAE consumer crashes on startup
+        # (org.apache.avro.InvalidNumberEncodingException) when subscribed to
+        # both MetadataChangeLog_Versioned_v1 and MetadataChangeLog_Timeseries_v1
+        # at once. This must be done via `kubectl set env` directly rather than
+        # a datahub-gms.extraEnvs values entry: appending a second same-named
+        # env var relies on "last one wins", which does NOT hold when Helm
+        # patches an existing Deployment (confirmed by testing - the key was
+        # dropped entirely by the API server's strategic merge patch). It also
+        # can't be a global.kafka.topics values override, since that value is
+        # shared by every component in the release (acryl-datahub-actions, the
+        # restore-indices CronJob, the system-update jobs) and redirecting it
+        # for all of them risks silently breaking things like RestoreIndices
+        # backfilling Timeseries data. `kubectl set env` scopes the change to
+        # GMS alone and replaces the value in place, no duplicate involved.
+        #
+        # Timeseries is handled instead by the standalone consumer deployed
+        # in the next step. Remove this step once DataHub ships a fix upstream.
+        run: |
+          kubectl set env deployment/datahub-datahub-gms -n ${KUBE_NAMESPACE} \
+            METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME=zz_disabled_timeseries_mae_split_workaround
+
       - name: deploy standalone timeseries MAE consumer (v1.6.0 workaround)
-        # Only run where helm_deploy/<env>/values-base.yaml has the matching
-        # datahub-gms METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME override -
+        # Only run where the step above has redirected GMS off this topic -
         # without it, GMS would still fight this consumer over the same
         # topic. Update this list as the workaround is rolled out further.
         if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}

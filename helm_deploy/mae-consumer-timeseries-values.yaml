@@ -9,17 +9,22 @@
 # (org.apache.avro.InvalidNumberEncodingException) if subscribed to both
 # MetadataChangeLog_Versioned_v1 and MetadataChangeLog_Timeseries_v1 at once.
 #
-# GMS keeps handling MetadataChangeLog_Versioned_v1 (see the
-# METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME override on datahub-gms in
-# helm_deploy/<env>/values-base.yaml - per-environment because Helm doesn't
-# deep-merge arrays, see the note in values-base.yaml). This file's
-# `metadata_change_log_versioned_topic_name` override below is the mirror of
-# that: it redirects this consumer's Versioned subscription to a placeholder
-# so the two consumers never overlap or duplicate-process the same topic.
+# GMS keeps handling MetadataChangeLog_Versioned_v1 - it's redirected off
+# Timeseries separately, via `kubectl set env` in the "redirect GMS off the
+# Timeseries topic" step in deploy-workflow.yml (not a values override here:
+# that step's comment explains why global.kafka.topics can't safely be
+# touched - it's shared by acryl-datahub-actions, the restore-indices
+# CronJob, and the system-update jobs too).
+#
+# This file only needs to redirect Versioned to a placeholder for this one
+# standalone render, so the two consumers never overlap or
+# duplicate-process the same topic. That's safe as a values override here
+# (rather than `kubectl set env`) because this Deployment is applied fresh
+# via `helm template | kubectl apply` each run, not patched from values
+# containing a pre-existing duplicate key.
 #
 # Remove this file and its use in deploy-workflow.yml once DataHub ships a
-# fix and the datahub-gms overrides in the environment values files are
-# reverted.
+# fix and the "redirect GMS off the Timeseries topic" step is removed.
 
 global:
   datahub_standalone_consumers_enabled: true

@@ -6,11 +6,3 @@ datahub-gms:
       value: "1000"
     - name: ES_BULK_FLUSH_PERIOD
       value: "60"
-    # Workaround for a v1.6.0 GMS bug where the embedded MAE consumer crashes
-    # on startup when subscribed to both MetadataChangeLog_Versioned_v1 and
-    # MetadataChangeLog_Timeseries_v1 at once. See the fuller explanation in
-    # helm_deploy/dev/values-base.yaml and
-    # helm_deploy/mae-consumer-timeseries-values.yaml. Remove once DataHub
-    # ships a fix upstream.
-    - name: "METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME"
-      value: "zz_disabled_timeseries_mae_split_workaround"
