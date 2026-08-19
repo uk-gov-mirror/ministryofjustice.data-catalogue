@@ -213,7 +213,7 @@ jobs:
           --set global.sql.datasource.username=${POSTGRES_USERNAME} \
           --set global.sql.datasource.extraEnvs[0].value=${POSTGRES_DB_NAME}
 
-      - name: redirect GMS off the Timeseries topic (v1.6.0 workaround)
+      - name: apply GMS v1.6.0 workarounds
         # Update this list as the workaround is rolled out further (must
         # match the "deploy standalone timeseries MAE consumer" step below).
         if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}
@@ -221,26 +221,48 @@ jobs:
         id: gms-timeseries-workaround
         env:
           KUBE_NAMESPACE: ${{ secrets.kube_namespace }}
-        # GMS's embedded MAE consumer crashes on startup
-        # (org.apache.avro.InvalidNumberEncodingException) when subscribed to
-        # both MetadataChangeLog_Versioned_v1 and MetadataChangeLog_Timeseries_v1
-        # at once. This must be done via `kubectl set env` directly rather than
-        # a datahub-gms.extraEnvs values entry: appending a second same-named
+        # Two related v1.6.0 GMS fixes, both applied via `kubectl set env`
+        # directly on the live Deployment rather than as Helm values, and
+        # both discovered/validated running RestoreIndices against dev:
+        #
+        # 1. METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME - GMS's embedded MAE
+        #    consumer crashes on startup (org.apache.avro.
+        #    InvalidNumberEncodingException) when subscribed to both
+        #    MetadataChangeLog_Versioned_v1 and MetadataChangeLog_Timeseries_v1
+        #    at once. Redirecting Timeseries to a placeholder here leaves GMS
+        #    handling Versioned only; Timeseries is handled instead by the
+        #    standalone consumer deployed in the next step.
+        #
+        # 2. SPRING_KAFKA_PROPERTIES_MAX_POLL_RECORDS - separately, GMS got
+        #    stuck in an infinite rebalance loop during a RestoreIndices
+        #    backfill: a batch of expensive-to-process records (dbt sibling-
+        #    association lookups) took longer than max.poll.interval.ms
+        #    (300000ms default) to get through at the default
+        #    max.poll.records=500, so Kafka kept evicting the consumer before
+        #    it could commit, and it retried the same batch forever. Reducing
+        #    the batch size gives it enough headroom to always commit within
+        #    the timeout. Confirmed safe at 100 (500 caused the stall; 50 and
+        #    100 have both run for hours with zero timeouts in dev).
+        #
+        # Both are applied via `kubectl set env` rather than a
+        # datahub-gms.extraEnvs values entry: appending a second same-named
         # env var relies on "last one wins", which does NOT hold when Helm
         # patches an existing Deployment (confirmed by testing - the key was
-        # dropped entirely by the API server's strategic merge patch). It also
-        # can't be a global.kafka.topics values override, since that value is
-        # shared by every component in the release (acryl-datahub-actions, the
-        # restore-indices CronJob, the system-update jobs) and redirecting it
-        # for all of them risks silently breaking things like RestoreIndices
-        # backfilling Timeseries data. `kubectl set env` scopes the change to
-        # GMS alone and replaces the value in place, no duplicate involved.
+        # dropped entirely by the API server's strategic merge patch, causing
+        # the upgrade to fail outright). METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME
+        # also can't be a global.kafka.topics values override, since that
+        # value is shared by every component in the release
+        # (acryl-datahub-actions, the restore-indices CronJob, the
+        # system-update jobs) and redirecting it for all of them risks
+        # silently breaking things like RestoreIndices backfilling
+        # Timeseries data. `kubectl set env` scopes both changes to GMS
+        # alone and replaces the values in place, no duplicate involved.
         #
-        # Timeseries is handled instead by the standalone consumer deployed
-        # in the next step. Remove this step once DataHub ships a fix upstream.
+        # Remove this step once DataHub ships fixes upstream for both issues.
         run: |
           kubectl set env deployment/datahub-datahub-gms -n ${KUBE_NAMESPACE} \
-            METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME=zz_disabled_timeseries_mae_split_workaround
+            METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME=zz_disabled_timeseries_mae_split_workaround \
+            SPRING_KAFKA_PROPERTIES_MAX_POLL_RECORDS=100
 
       - name: deploy standalone timeseries MAE consumer (v1.6.0 workaround)
         # Only run where the step above has redirected GMS off this topic -
