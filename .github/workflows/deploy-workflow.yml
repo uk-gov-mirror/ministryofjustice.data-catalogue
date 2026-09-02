@@ -214,9 +214,9 @@ jobs:
           --set global.sql.datasource.extraEnvs[0].value=${POSTGRES_DB_NAME}
 
       - name: apply GMS v1.6.0 workarounds
-        # Update this list as the workaround is rolled out further (must
-        # match the "deploy standalone timeseries MAE consumer" step below).
-        if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}
+        # Now applied to every environment this workflow deploys to (dev,
+        # preprod, prod - the only three inputs.env ever takes, per
+        # deploy-dev.yml/deploy-staged.yml), so no env gate here.
         shell: bash
         id: gms-timeseries-workaround
         env:
@@ -269,10 +269,9 @@ jobs:
             SPRING_KAFKA_PROPERTIES_MAX_POLL_RECORDS=25
 
       - name: deploy standalone timeseries MAE consumer (v1.6.0 workaround)
-        # Only run where the step above has redirected GMS off this topic -
-        # without it, GMS would still fight this consumer over the same
-        # topic. Update this list as the workaround is rolled out further.
-        if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}
+        # Must always run alongside the step above, which has redirected GMS
+        # off this topic in every environment - without it, GMS would still
+        # fight this consumer over the same topic.
         shell: bash
         id: deploy-mae-timeseries-workaround
         env:
