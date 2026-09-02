@@ -214,9 +214,9 @@ jobs:
           --set global.sql.datasource.extraEnvs[0].value=${POSTGRES_DB_NAME}
 
       - name: apply GMS v1.6.0 workarounds
-        # Update this list as the workaround is rolled out further (must
-        # match the "deploy standalone timeseries MAE consumer" step below).
-        if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}
+        # Now applied to every environment this workflow deploys to (dev,
+        # preprod, prod - the only three inputs.env ever takes, per
+        # deploy-dev.yml/deploy-staged.yml), so no env gate here.
         shell: bash
         id: gms-timeseries-workaround
         env:
@@ -241,8 +241,12 @@ jobs:
         #    max.poll.records=500, so Kafka kept evicting the consumer before
         #    it could commit, and it retried the same batch forever. Reducing
         #    the batch size gives it enough headroom to always commit within
-        #    the timeout. Confirmed safe at 100 (500 caused the stall; 50 and
-        #    100 have both run for hours with zero timeouts in dev).
+        #    the timeout. 100 initially looked safe (hours with zero timeouts
+        #    in dev), but both dev and preprod later hit an even more
+        #    expensive batch that still stalled it at 100 - one environment
+        #    crash-looped, the other stalled permanently with no active
+        #    consumer group members until GMS was restarted. 25 has since run
+        #    stable through both environments' full backfill to zero lag.
         #
         # Both are applied via `kubectl set env` rather than a
         # datahub-gms.extraEnvs values entry: appending a second same-named
@@ -262,13 +266,12 @@ jobs:
         run: |
           kubectl set env deployment/datahub-datahub-gms -n ${KUBE_NAMESPACE} \
             METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME=zz_disabled_timeseries_mae_split_workaround \
-            SPRING_KAFKA_PROPERTIES_MAX_POLL_RECORDS=100
+            SPRING_KAFKA_PROPERTIES_MAX_POLL_RECORDS=25
 
       - name: deploy standalone timeseries MAE consumer (v1.6.0 workaround)
-        # Only run where the step above has redirected GMS off this topic -
-        # without it, GMS would still fight this consumer over the same
-        # topic. Update this list as the workaround is rolled out further.
-        if: ${{ contains(fromJSON('["dev", "preprod"]'), inputs.env) }}
+        # Must always run alongside the step above, which has redirected GMS
+        # off this topic in every environment - without it, GMS would still
+        # fight this consumer over the same topic.
         shell: bash
         id: deploy-mae-timeseries-workaround
         env:
