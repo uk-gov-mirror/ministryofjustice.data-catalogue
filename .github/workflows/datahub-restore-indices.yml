@@ -124,6 +124,28 @@ jobs:
             --reuse-values \
             --set-json datahubUpgrade.restoreIndices.image.args="${ARGS}"
 
+      - name: re-apply GMS v1.6.0 workarounds
+        shell: bash
+        env:
+          KUBE_NAMESPACE: ${{ secrets.KUBE_NAMESPACE }}
+        # The helm upgrade above reconciles the whole datahub release,
+        # including GMS's Deployment - since the v1.6.0 topic-split/
+        # max-poll-records fix (see deploy-workflow.yml) is applied via
+        # `kubectl set env` rather than a Helm value, that upgrade silently
+        # wipes both settings back to the chart's defaults. A GMS pod already
+        # running keeps working on its old in-memory config until something
+        # next recreates it, so this can sit unnoticed until a later restart
+        # (rollout, node move, OOM, ...) exposes it - as happened during this
+        # step's own absence, when a routine restart rolled in the reverted
+        # spec and reintroduced the dual-topic crash. Re-applying here keeps
+        # this workflow's own helm upgrade from ever leaving that regression
+        # latent. Remove once DataHub ships fixes upstream for both issues
+        # (see deploy-workflow.yml for the full explanation of each).
+        run: |
+          kubectl set env deployment/datahub-datahub-gms -n ${KUBE_NAMESPACE} \
+            METADATA_CHANGE_LOG_TIMESERIES_TOPIC_NAME=zz_disabled_timeseries_mae_split_workaround \
+            SPRING_KAFKA_PROPERTIES_MAX_POLL_RECORDS=25
+
       - name: Trigger one-off restore-indices job from cronjob
         shell: bash
         env:
